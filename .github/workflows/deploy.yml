@@ -52,7 +52,7 @@ jobs:
           git -C /tmp/quinsuper-publish commit -m "Deploy $GITHUB_SHA"
           # The separate worktree uses checkout's authenticated repository configuration.
           auth_header=$(git config --get http.https://github.com/.extraheader)
-          git -C /tmp/quinsuper-publish -c http.https://github.com/.extraheader="$auth_header" push origin HEAD:refs/heads/deploy/quinsuper
+          git -C /tmp/quinsuper-publish -c http.https://github.com/.extraheader= -c http.https://github.com/.extraheader="$auth_header" push origin HEAD:refs/heads/deploy/quinsuper
       - name: Deployment details
         run: |
           echo 'Server checks the deployment branch every minute and performs its own API health check.' >> "$GITHUB_STEP_SUMMARY"
