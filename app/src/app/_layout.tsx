@@ -4,7 +4,9 @@ import { useColorScheme } from 'react-native';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
 
 import { AlertsProvider } from '@/state/Alerts';
+import { APP_NAME } from '@/i18n';
 import { AppStateProvider, useApp } from '@/state/AppState';
+import { SharedListProvider } from '@/state/SharedList';
 import { useColors } from '@/theme';
 
 function RootStack() {
@@ -27,6 +29,7 @@ function RootStack() {
       <Stack.Screen name="share-card" options={{ title: t('shareCardTitle'), presentation: 'modal' }} />
       <Stack.Screen name="r/[data]" options={{ headerShown: false }} />
       <Stack.Screen name="alerts" options={{ title: t('alertsTitle') }} />
+      <Stack.Screen name="l/[id]" options={{ title: APP_NAME }} />
     </Stack>
   );
 }
@@ -38,8 +41,10 @@ export default function RootLayout() {
       <ThemeProvider value={scheme === 'dark' ? DarkTheme : DefaultTheme}>
         <AppStateProvider>
           <AlertsProvider>
-            <StatusBar style="auto" />
-            <RootStack />
+            <SharedListProvider>
+              <StatusBar style="auto" />
+              <RootStack />
+            </SharedListProvider>
           </AlertsProvider>
         </AppStateProvider>
       </ThemeProvider>

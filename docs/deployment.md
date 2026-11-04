@@ -44,6 +44,10 @@ background task (`expo-background-task`, no more often than every 6 hours; the O
 decides when). Notifications are local (`expo-notifications`, no push service or APNs
 entitlement). The background task needs a development or store build; it never runs in
 Expo Go or on the iOS simulator.
+account implementation. It is not applied to SQLite. A user's own list and
+preferences stay in device/browser local storage. Lists the user chooses to
+share are stored in SQLite without accounts (see [Shared lists](#shared-lists-f10)).
+There is no account, real-time push or alerts service in this release.
 `SUPABASE_URL` and `SUPABASE_SERVICE_ROLE_KEY` are not used or needed.
 No Supabase project or cloud data was provided to migrate.
 
@@ -57,8 +61,10 @@ The API runs as `www-data` on loopback `127.0.0.1:3007`, behind Nginx:
   as of the latest Monday 07:00 Europe/Madrid, plus the previous week and the change
   (`previous` is null until a week of data exists). Mercadona uses the warehouse with the
   most stores (`bcn1` if none); `zones` in the response says which. Cached for 10 minutes.
+- `/api/lists…`: shared lists, the **only write endpoints** (below).
 
-There are no network write endpoints. SQLite files are never served by Nginx.
+The catalogue endpoints are read-only and answer 405 to anything but GET.
+SQLite files are never served by Nginx.
 The web build uses `EXPO_PUBLIC_API_URL=/api`. A native build needs an absolute
 HTTPS API URL and an appropriate CORS policy if used in another web origin.
 
@@ -68,8 +74,127 @@ builds point them at `EXPO_PUBLIC_SITE_URL`, which defaults to
 The card's data is inside the link, so the server stores nothing. Nginx already
 serves `/r/…` with `index.html`. The page's title and description are set in the
 browser, so chat apps show only the generic preview from `index.html`.
+HTTPS API URL (e.g. `https://quinsuper.trottedmedia.com/api`); its origin is also
+used for invite links. Use an appropriate CORS policy if the API is used from another web origin
+(the API sends no CORS headers, so other websites can't call it from a browser).
 Without recent imported data, the app falls back to explicitly labelled sample
 data; samples are never mixed with imported prices or real store locations.
+Without `EXPO_PUBLIC_API_URL` (sample mode) the app hides sharing and says why.
+
+## Shared lists (F10)
+
+Flatmates share one list without accounts. **The link is the key**: anyone who
+has `https://quinsuper.trottedmedia.com/l/<id>` can see and edit that list, like
+an unlisted document link. The id is 128 random bits (22 base64url characters),
+never sequential, so it can't be guessed. The app shows "Anyone with the link can
+see and edit this list" next to the Share button and on the shared list.
+
+How it works: Share creates the list on the server and opens the share sheet
+(on desktop browsers without one, "Send invite link" copies the link). Opening the
+link shows the list and a Join button; joining replaces the list on that device
+(the screen says so) and removes the id from the address bar. While shared, the
+List tab polls every 4.5 s (and on focus / return to the app) and shows "Synced
+Xs ago". Edits are sent as item operations; when offline they are queued on the
+device (kept across restarts) and sent later, with backoff. "Leave list" keeps a
+local copy and stops syncing. On a shared list, "Clear list" is replaced by
+"Remove ticked items" so one tap can't empty it for everyone. If the server says
+the list no longer exists, the items stay on the device as a local list.
+
+### Endpoints
+
+All bodies are JSON (`Content-Type: application/json`). An item is
+`{ id, text, categoryId, level, quantity, checked }`; every field is required.
+
+| Request | What it does |
+|---|---|
+| `POST /api/lists` `{ items }` | Creates a list (0–300 items). 201 with `{ id, version, updatedAt, items }`. |
+| `GET /api/lists/<id>[?since=<version>]` | The list. With `since` equal to the current version: `{ id, version, updatedAt, unchanged: true }` and no items. |
+| `POST /api/lists/<id>/ops` `{ ops }` | 1–100 operations, applied in order in one transaction: `{op:"add", item}`, `{op:"update", id, set:{…fields}}`, `{op:"remove", id}`. Returns the list plus `rejected` (adds refused because the list is full). The app uses this one. |
+| `POST /api/lists/<id>/items` `item` | One add (409 `list_full` when full). |
+| `PATCH /api/lists/<id>/items/<itemId>` `{…fields}` | One update. |
+| `DELETE /api/lists/<id>/items/<itemId>` | One remove. |
+
+Every write returns the whole list and its new `version` (+1 per request that
+changed something). There is no endpoint to delete or list all lists.
+
+**Conflict rule** (no `If-Match`, kept simple on purpose): operations on different
+items never conflict. An update only sets the fields it names, so one person
+ticking an item and another changing its quantity both survive; for the *same*
+field the last write to reach the server wins. Removing wins: an update to a
+removed item is ignored. Adding an item id that already exists does nothing, so
+retries are safe. The app re-applies its unsent edits on top of every answer,
+so nothing typed on a phone is lost while it waits.
+
+### Limits and security
+
+- JSON body ≤ 32 KB (413), `Content-Type` must be `application/json` (415);
+  invalid UTF-8/JSON → 400. Nginx also refuses bodies over 64 KB.
+- ≤ 300 items per list, item text 1–120 characters (no control or bidi-override
+  characters), brand ≤ 60, quantity a whole number 1–99, `categoryId` null or a
+  known category, item ids `[A-Za-z0-9_-]{1,40}`. Unknown fields are rejected at
+  every level (400 with the field path and, for batches, the operation `index`;
+  nothing in the batch is applied).
+- Malformed or unknown list ids: 404 (same answer, nothing to probe). Wrong
+  method: 405 with `Allow`.
+- In-memory write rate limits (token buckets; `ingest/src/api.ts`,
+  `DEFAULT_WRITE_LIMITS`). Every item operation or created item costs one:
+  per client address 600 burst then 300/min; new lists per address 10 burst then
+  20/hour; for everyone together 3000 burst then 3000/min, and 100 new lists
+  burst then 600/hour. Refused attempts count. 429 with `Retry-After`.
+  IPv6 addresses are grouped by /64. Reads are not limited.
+- At most 20,000 stored lists; creating more answers 503 (bounds disk use, worst
+  case ~1.5 GB, typical lists are a few KB).
+- The client address is read from `X-Real-IP` only when the request comes from
+  loopback (Nginx); `X-Forwarded-For` is ignored.
+- No CORS headers, and the JSON content type forces a CORS preflight, so other
+  websites can't write from a visitor's browser.
+- List responses carry `X-Robots-Tag: noindex` and the invite page has a
+  `noindex` meta tag, in case a link is posted publicly.
+- While the daily import holds the database lock, a write waits at most 1.5 s and
+  then answers 503 `busy` with `Retry-After`; the app retries.
+
+**One-time server change (shared lists, Nov 2026).** The updater doesn't install
+Nginx changes. Until an administrator runs the following, Nginx doesn't set
+`X-Real-IP`: every visitor then shares the per-address write limit (all requests
+come from 127.0.0.1), and a client could send its own `X-Real-IP` to dodge it (the
+global limits still apply). It is safe to run twice:
+
+```bash
+f=/etc/nginx/sites-available/quinsuper
+sudo grep -q 'X-Real-IP' "$f" || sudo sed -i 's|^\(\s*\)proxy_set_header X-Forwarded-Proto \$scheme;|&\n\1proxy_set_header X-Real-IP $remote_addr;\n\1client_max_body_size 64k;|' "$f"
+sudo nginx -t && sudo systemctl reload nginx
+```
+
+### Data kept, expiry and deletion
+
+Stored per list: the random id, a version number, created/updated/last-opened
+times, and per item the fields above plus a position and update time. No names,
+accounts, device ids, IP addresses or cookies. Item text is whatever people type,
+so it can contain personal details; it is never logged (errors log only the
+method and the database message). Nginx access logs do contain the list id in
+request paths, like any link; they follow the host's log rotation.
+
+A list nobody has opened or edited for **180 days** is deleted, with its items,
+at API start and every 6 hours (opening a list refreshes its date at most once a
+day). The daily backups (14 days) still contain deleted lists until they rotate
+out. Rate-limit counters live only in memory.
+
+To delete one list immediately (e.g. on request; the id is the last part of the
+link). Deleting items explicitly matters because the `sqlite3` shell does not
+enforce the cascade by default:
+
+```bash
+id='PASTE_THE_22_CHARACTER_ID'
+sudo sqlite3 /var/lib/quinsuper/prices.sqlite "BEGIN; DELETE FROM shared_list_items WHERE list_id='$id'; DELETE FROM shared_lists WHERE id='$id'; COMMIT;"
+```
+
+Phones that still have the list open then show "This shared list no longer
+exists" and keep their items locally. Count stored lists with
+`sudo sqlite3 /var/lib/quinsuper/prices.sqlite "SELECT COUNT(*) FROM shared_lists"`.
+
+The tables (`shared_lists`, `shared_list_items`) are created by
+`CREATE TABLE IF NOT EXISTS` at API/importer start as schema version 3. Older
+releases ignore them, so a code rollback keeps working (lists stay in the file).
 
 ## Daily import and backups
 

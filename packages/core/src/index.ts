@@ -18,3 +18,4 @@ export * from './madridTime';
 export * from './openingHours';
 export * from './basketIndex';
 export * from './alerts';
+export * from './sharedList';

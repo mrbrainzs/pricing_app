@@ -50,9 +50,11 @@ export function resolveItemText(text: string): ResolveResult | null {
 }
 
 let idCounter = 0;
+/** Unique enough to merge items added on different phones into one shared list. */
 export function newItemId(): string {
   idCounter += 1;
-  return `i${Date.now().toString(36)}${idCounter.toString(36)}`;
+  const random = Math.floor(Math.random() * 36 ** 6).toString(36).padStart(6, '0');
+  return `i${Date.now().toString(36)}${idCounter.toString(36)}${random}`;
 }
 
 export function makeListItem(text: string, quantity = 1, level: BrandLevel = { kind: 'any' }): ListItem {
