@@ -72,7 +72,12 @@ jobs:
           rm "$base/incoming/$release.tar.gz"
           REMOTE
       - name: Check HTTPS
-        run: curl --fail --silent --show-error --retry 3 https://quinsuper.trottedmedia.com/ -o /dev/null
+        shell: bash
+        run: |
+          set -euo pipefail
+          status=$(curl --silent --show-error --retry 3 -o /dev/null -w '%{http_code}' https://quinsuper.trottedmedia.com/)
+          # Preview remains password protected until legal clearance.
+          test "$status" = 200 || test "$status" = 401
       - name: Remove SSH credentials
         if: always()
         run: rm -f ~/.ssh/id_ed25519
