@@ -69,6 +69,7 @@ function StoreCard({ basket, rank, items }: { basket: StoreBasket; rank: number;
             <View style={{ width: 10, height: 10, borderRadius: 5, backgroundColor: chain.color }} />
             <T variant="heading">{basket.store.name}</T>
           </Row>
+          {basket.store.address ? <T variant="small">{basket.store.address}</T> : null}
           <T variant="small">{km(basket.distanceKm, lang)} · {t('itemsFound', { found: basket.found, total: basket.requested })}</T>
         </View>
         <T variant="bigPrice">{money(basket.total, lang)}</T>
@@ -144,6 +145,7 @@ export default function CompareScreen() {
 
       {result.ranking.length === 0 ? <T variant="muted">{t('noStores', { km: settings.maxDistanceKm })}</T> : null}
       {unavailableNames.length > 0 ? <T variant="small" style={{ color: c.warn }}>{t('unavailable', { items: unavailableNames.join(', ') })}</T> : null}
+      {result.noPrices.length > 0 ? <T variant="small">{t('noPricesYet', { chains: result.noPrices.map((id) => CHAINS[id].name).join(', ') })}</T> : null}
 
       {mode === 'two' ? (
         split && split.worthIt ? (
@@ -179,6 +181,7 @@ export default function CompareScreen() {
       ))}
 
       {result.ranking.some((b) => b.missing.length > 0) ? <T variant="small">{t('missingNote')}</T> : null}
+      {result.ranking.some((b) => b.store.source === 'openstreetmap') ? <T variant="small">{t('storesAttribution')}</T> : null}
     </Screen>
   );
 }

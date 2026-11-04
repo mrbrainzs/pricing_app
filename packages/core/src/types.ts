@@ -54,6 +54,13 @@ export interface Store {
   zone: string;
   lat: number;
   lng: number;
+  /** Street address when known ("Carrer de Verdi 12"). */
+  address?: string;
+  postalCode?: string;
+  /** Opening hours in OpenStreetMap syntax ("Mo-Sa 09:00-21:30"), for a later "open now" feature. */
+  openingHours?: string;
+  /** Where the location comes from; OpenStreetMap data must be credited in the app. */
+  source?: 'openstreetmap' | 'sample';
 }
 
 export type BrandLevel =

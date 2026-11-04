@@ -62,10 +62,44 @@ workflow was replaced with this local timer so SQLite stays on the server.
 A request timeout, retry/backoff and sequential request delay are configured.
 Unverified postal-code zones cause failure instead of silently assigning a zone.
 
-The repository contains no verified physical store locations. Product search
-and history work with imported prices; basket comparison explains this missing
-store coverage. Other chain importers and a verified store-location feed remain
-separate product milestones.
+### Store locations (OpenStreetMap)
+
+The same import service refreshes **store locations** from OpenStreetMap (Overpass
+API) when the stored list is more than 7 days old, before importing prices. No
+new systemd unit is needed. It covers Mercadona, Alcampo, bonÀrea, Caprabo, DIA and
+Bonpreu/Esclat shops in and around Barcelona city.
+
+- Each Mercadona store gets the warehouse (price zone) that Mercadona reports for
+  the store's own postal code. Stores whose zone cannot be verified are skipped
+  and counted in the log, never given a guessed zone. The price import then also
+  covers every warehouse that has a store.
+- Single-price chains (bonÀrea, Bonpreu/Esclat) use zone `cat`. The other chains
+  use `bcn` until they have a price importer, which must use the same zone names.
+- The stored list is replaced in one transaction, and only when the result looks
+  complete (at least 20 stores from at least 3 chains). If OpenStreetMap is down or
+  returns too little, the previous list stays and the price import still runs.
+- Chains with stores nearby but no prices yet are named in the app ("No prices yet
+  for: …") instead of being ranked.
+
+Store data is © OpenStreetMap contributors under the Open Database License
+(ODbL). The app shows that credit. Because `/api/catalog` publishes the store
+list, that data stays under the ODbL.
+
+Force a refresh by hand (stores only, no prices):
+
+```bash
+cd /var/www/quinsuper/current
+sudo -u www-data env DATABASE_PATH=/var/lib/quinsuper/prices.sqlite \
+  /opt/quinsuper-node/bin/node server/ingest.mjs --sink sqlite --stores only
+```
+
+Check the last refresh:
+
+```bash
+sudo sqlite3 /var/lib/quinsuper/prices.sqlite "SELECT * FROM import_runs"
+```
+
+Other chains' price importers remain a separate milestone.
 
 `quinsuper-backup.timer` creates and integrity-checks an online SQLite backup
 at **04:30 Europe/Madrid**, including committed WAL data, retaining 14 days

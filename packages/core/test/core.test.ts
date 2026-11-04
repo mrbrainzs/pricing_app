@@ -224,6 +224,13 @@ describe('basket comparison', () => {
     expect(r.ranking[0]?.lines[0]).toMatchObject({ price: 0.7, source: 'receipt' });
   });
 
+  it('leaves out chains that have stores nearby but no prices yet', () => {
+    const withLidl: Store[] = [...stores, { id: 'c1', chain: 'caprabo', name: 'Caprabo A', zone: 'z', lat: 41.4005, lng: 2.1605 }];
+    const r = compareBasket({ items, stores: withLidl, products, prices, origin, now: NOW });
+    expect(r.ranking.map((b) => b.store.chain)).toEqual(['dia', 'mercadona']);
+    expect(r.noPrices).toEqual(['caprabo']);
+  });
+
   it('runs on the sample data', () => {
     const sample = buildSampleData(NOW);
     const list = parseListText('llet x2, ous, arròs, oli verge extra, tomàquets, pit de pollastre, paper higiènic, cafè');

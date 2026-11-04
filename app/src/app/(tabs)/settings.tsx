@@ -41,6 +41,7 @@ export default function SettingsScreen() {
       <Card>
         <T variant="heading">{t('dataSource')}</T>
         <T variant="muted">{t('dataSourceBody')}</T>
+        <T variant="small">{t('storesAttribution')}</T>
       </Card>
       <T variant="small">{APP_NAME} 0.1.0</T>
     </Screen>

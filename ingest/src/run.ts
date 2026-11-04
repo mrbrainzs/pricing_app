@@ -10,12 +10,16 @@
  *   --sink         json (writes ./out) or sqlite (local DATABASE_PATH)
  *   --details      new (default): fetch brand/EAN only for unseen products; all; none
  *   --max-categories N   stop early, for test runs
+ *   --stores       auto (default): with sqlite, refresh store locations from OpenStreetMap
+ *                  when they are more than 7 days old; force; skip; only (stores, no prices)
  */
 import { parseArgs } from 'node:util';
 import { PoliteClient } from './http';
 import { mercadonaWarehouse, scrapeMercadona } from './chains/mercadona';
 import { JsonSink, type Sink } from './sink';
 import { SqliteSink } from './sqliteSink';
+import { storeZones } from './database';
+import { refreshStores, storesDue } from './stores/refresh';
 
 const DEFAULT_POSTAL_CODES = ['08001', '08012', '08014', '08018', '08027', '08028'];
 
@@ -28,6 +32,7 @@ async function main() {
       details: { type: 'string', default: 'new' },
       'max-categories': { type: 'string' },
       out: { type: 'string', default: 'out' },
+      stores: { type: 'string', default: 'auto' },
     },
   });
 
@@ -43,7 +48,25 @@ async function main() {
     throw new Error(`Chain "${values.chain}" has no importer yet. v1 importers: mercadona.`);
   }
 
+  if (!['auto', 'force', 'skip', 'only'].includes(values.stores!)) throw new Error('--stores must be auto, force, skip or only.');
   const http = new PoliteClient({ delayMs: 400 });
+
+  // Store locations first, so the price import below covers every zone that has a store.
+  if (sink instanceof SqliteSink && values.stores !== 'skip') {
+    if (values.stores !== 'auto' || storesDue(sink.db)) {
+      try {
+        await refreshStores(sink.db, http, (m) => console.log(`[stores] ${m}`));
+      } catch (err) {
+        // Prices still matter when OpenStreetMap is down; the previous store list stays.
+        if (values.stores === 'only') throw err;
+        console.warn(`[stores] refresh failed, keeping previous locations: ${(err as Error).message}`);
+      }
+    }
+    if (values.stores === 'only') return;
+  } else if (values.stores === 'only') {
+    throw new Error('--stores only needs --sink sqlite.');
+  }
+
   const log = (m: string) => console.log(`[mercadona] ${m}`);
   const postalCodes = values.postal!.split(',').map((s) => s.trim()).filter(Boolean);
   const zones = new Map<string, string>();
@@ -51,6 +74,14 @@ async function main() {
     const wh = await mercadonaWarehouse(http, pc);
     log(`postal code ${pc} -> warehouse ${wh}`);
     if (!zones.has(wh)) zones.set(wh, pc);
+  }
+  if (sink instanceof SqliteSink) {
+    for (const [zone, pc] of storeZones(sink.db, 'mercadona')) {
+      if (!zones.has(zone)) {
+        zones.set(zone, pc);
+        log(`warehouse ${zone} added because stores use it (postal code ${pc})`);
+      }
+    }
   }
 
   const existing = await sink.existingProducts('mercadona');

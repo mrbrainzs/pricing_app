@@ -80,6 +80,8 @@ export interface CompareResult {
   split: SplitResult | null;
   /** Items no store in range could match. */
   unavailable: string[];
+  /** Chains with stores in range but no current prices at all (left out of the ranking). */
+  noPrices: ChainId[];
 }
 
 type PriceIndex = Map<string, PriceObservation>;
@@ -194,8 +196,13 @@ export function compareBasket(input: CompareInput): CompareResult {
     productsByChain.set(p.chain, list);
   }
 
-  const raw = [...nearest.values()].map(({ store, d }) => {
+  const noPrices: ChainId[] = [];
+  const raw = [...nearest.values()].flatMap(({ store, d }) => {
     const chainProducts = productsByChain.get(store.chain) ?? [];
+    if (!chainProducts.some((p) => priceAt(idx, p, store))) {
+      noPrices.push(store.chain);
+      return [];
+    }
     const byCategory = new Map<string, Product[]>();
     for (const p of chainProducts) {
       if (!p.categoryId) continue;
@@ -208,7 +215,7 @@ export function compareBasket(input: CompareInput): CompareResult {
       const line = bestLine(item, store, chainProducts, byCategory, idx, now);
       if (line) lines.set(item.id, line);
     }
-    return { store, distanceKm: round(d, 2), lines };
+    return [{ store, distanceKm: round(d, 2), lines }];
   });
 
   // Items nobody has are reported once and left out of every basket.
@@ -247,7 +254,7 @@ export function compareBasket(input: CompareInput): CompareResult {
     b.diffToNext = next ? round(next.comparableTotal - b.comparableTotal) : null;
   });
 
-  return { ranking: baskets, split: bestSplit(baskets, available, medianCost, minSaving), unavailable };
+  return { ranking: baskets, split: bestSplit(baskets, available, medianCost, minSaving), unavailable, noPrices };
 }
 
 function bestSplit(baskets: StoreBasket[], items: ListItem[], medianCost: Map<string, number>, minSaving: number): SplitResult | null {

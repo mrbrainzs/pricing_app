@@ -33,6 +33,8 @@ export function openDatabase(path: string): SqliteDatabase {
     CREATE INDEX IF NOT EXISTS price_latest_idx ON price_observations(product_id, zone, observed_at DESC);
     CREATE INDEX IF NOT EXISTS price_time_idx ON price_observations(observed_at);
     INSERT OR IGNORE INTO schema_migrations VALUES(1, strftime('%Y-%m-%dT%H:%M:%fZ','now'));
+    CREATE TABLE IF NOT EXISTS import_runs (name TEXT PRIMARY KEY, finished_at TEXT NOT NULL, detail TEXT);
+    INSERT OR IGNORE INTO schema_migrations VALUES(2, strftime('%Y-%m-%dT%H:%M:%fZ','now'));
   `);
   const chain = db.prepare('INSERT OR IGNORE INTO chains VALUES(?, ?)');
   for (const c of Object.values(CHAINS)) chain.run(c.id, c.name);
@@ -69,4 +71,42 @@ export function history(db: SqliteDatabase, productId: string) {
   return db.prepare(`SELECT price, observed_at AS observedAt FROM price_observations
     WHERE product_id=? AND zone=? AND observed_at >= ? ORDER BY observed_at`)
     .all(productId, zone, new Date(Date.now() - 90 * 86_400_000).toISOString());
+}
+
+/**
+ * Replaces every store from one source in a single transaction, so a failed import
+ * leaves the previous list in place. Stores from other sources are kept.
+ */
+export function replaceStores(db: SqliteDatabase, source: NonNullable<Store['source']>, stores: Store[]): number {
+  const insert = db.prepare('INSERT INTO stores VALUES(?, ?) ON CONFLICT(id) DO UPDATE SET data=excluded.data');
+  db.exec('BEGIN IMMEDIATE');
+  try {
+    db.prepare("DELETE FROM stores WHERE json_extract(data, '$.source') = ?").run(source);
+    for (const s of stores) {
+      if (s.source !== source) throw new Error(`Store ${s.id} is not from ${source}`);
+      if (!Number.isFinite(s.lat) || !Number.isFinite(s.lng) || !s.zone) throw new Error(`Store ${s.id} has no position or zone`);
+      insert.run(s.id, JSON.stringify(s));
+    }
+    db.exec('COMMIT');
+  } catch (err) {
+    db.exec('ROLLBACK');
+    throw err;
+  }
+  return stores.length;
+}
+
+export function lastRun(db: SqliteDatabase, name: string): string | null {
+  return (db.prepare('SELECT finished_at FROM import_runs WHERE name=?').get(name)?.finished_at as string | undefined) ?? null;
+}
+
+export function recordRun(db: SqliteDatabase, name: string, at: Date, detail?: unknown): void {
+  db.prepare('INSERT INTO import_runs VALUES(?, ?, ?) ON CONFLICT(name) DO UPDATE SET finished_at=excluded.finished_at, detail=excluded.detail')
+    .run(name, at.toISOString(), detail === undefined ? null : JSON.stringify(detail));
+}
+
+/** Price zones that have stores of a chain, each with one postal code that the zone serves. */
+export function storeZones(db: SqliteDatabase, chain: Store['chain']): Map<string, string> {
+  const rows = db.prepare(`SELECT json_extract(data, '$.zone') AS zone, MIN(json_extract(data, '$.postalCode')) AS postal
+    FROM stores WHERE json_extract(data, '$.chain') = ? AND json_extract(data, '$.postalCode') IS NOT NULL GROUP BY zone`).all(chain);
+  return new Map(rows.map((r) => [r.zone as string, r.postal as string]));
 }
