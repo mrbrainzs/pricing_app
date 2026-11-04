@@ -43,7 +43,10 @@ var UNIT_WORDS = {
   lavados: { unit: "unit", factor: 1 },
   rentades: { unit: "unit", factor: 1 },
   dosis: { unit: "unit", factor: 1 },
-  washes: { unit: "unit", factor: 1 }
+  washes: { unit: "unit", factor: 1 },
+  lv: { unit: "unit", factor: 1 },
+  // "0,5 Dc" = half a dozen (Consum). Full words are left out: "1/2 docena" would read as 2 dozen.
+  dc: { unit: "unit", factor: 12 }
 };
 var NUM = String.raw`(\d+(?:[.,]\d+)?)`;
 var UNIT = String.raw`([a-z]+)`;
@@ -305,6 +308,54 @@ function detectBrand(name) {
 }
 
 // packages/core/src/categories.ts
+var MAX_UNIT_PRICE = {
+  milk: 4,
+  eggs: 1.2,
+  yogurt_plain: 12,
+  butter: 40,
+  cheese_sliced: 45,
+  bread_sliced: 12,
+  rice: 12,
+  pasta: 12,
+  olive_oil_ev: 25,
+  olive_oil: 18,
+  sunflower_oil: 8,
+  coffee_ground: 50,
+  sugar: 8,
+  flour: 8,
+  salt: 10,
+  tomato_crushed: 8,
+  tomato_fried: 10,
+  tuna_canned: 60,
+  chickpeas: 10,
+  lentils: 12,
+  tomatoes: 12,
+  bananas: 6,
+  apples: 8,
+  oranges: 6,
+  potatoes: 6,
+  onions: 8,
+  carrots: 6,
+  lettuce: 4,
+  chicken_breast: 25,
+  minced_meat: 25,
+  ham_cooked: 45,
+  water: 3,
+  beer: 12,
+  orange_juice: 8,
+  toilet_paper: 1.5,
+  kitchen_roll: 4,
+  laundry_detergent: 1.2,
+  dish_soap: 15,
+  shampoo: 60,
+  toothpaste: 150
+};
+function plausibleUnitPrice(categoryId, unitPrice, unit) {
+  const category = CATEGORY_BY_ID[categoryId];
+  const max = MAX_UNIT_PRICE[categoryId];
+  if (!category || max === void 0 || unitPrice === null || unit !== category.defaultSize.unit) return true;
+  return unitPrice <= max;
+}
 var kg = (amount) => ({ amount, unit: "kg" });
 var l = (amount) => ({ amount, unit: "l" });
 var ud = (amount) => ({ amount, unit: "unit" });
@@ -859,7 +910,8 @@ function bonareaSize(card) {
   const weight = card.weight?.replace(/^aprox\.?\s*/i, "").replace(/^pack\s+/i, "");
   const m = weight?.match(/^([\d.,]+)\s*([a-z]+)\.?$/i);
   if (m) {
-    const amount = Number(m[1].includes(",") ? m[1].replace(/\./g, "").replace(",", ".") : m[1]);
+    const raw = m[1];
+    const amount = Number(raw.includes(",") ? raw.replace(/\./g, "").replace(",", ".") : /^\d{1,3}(\.\d{3})+$/.test(raw) ? raw.replace(/\./g, "") : raw);
     const size = toSize(amount, m[2].toLowerCase() === "d" ? "dosis" : m[2]);
     if (size) return size;
   }
@@ -971,7 +1023,9 @@ var UNIT_TYPES = {
   "100 g": { unit: "kg", per: 0.1 },
   "100 gr": { unit: "kg", per: 0.1 },
   "1 ud": { unit: "unit", per: 1 },
-  "1 u": { unit: "unit", per: 1 }
+  "1 u": { unit: "unit", per: 1 },
+  "1 dc": { unit: "unit", per: 12 },
+  "1 docena": { unit: "unit", per: 12 }
 };
 function prices(item) {
   const list = item.priceData?.prices ?? [];
@@ -992,11 +1046,29 @@ function consumSize(item) {
   if (price && unitAmount && type) return { amount: round(price / unitAmount * type.per, 4), unit: type.unit };
   return parseSize(displayName(item));
 }
+function countFromName(name, categoryId) {
+  const n = name.toLowerCase();
+  if (categoryId === "eggs") {
+    const units = n.match(/(\d+)\s*(?:unidades|uds?\.?|u\.)(?:\s|$)/);
+    if (units) return { amount: Number(units[1]), unit: "unit" };
+    if (/1\/2\s*docena|media docena/.test(n)) return { amount: 6, unit: "unit" };
+    if (/\bdecena\b/.test(n)) return { amount: 10, unit: "unit" };
+    const dozens = n.match(/(\d+(?:[.,]\d+)?)\s*(?:dc|docenas?)\b/);
+    if (dozens) return { amount: Math.round(Number(dozens[1].replace(",", ".")) * 12), unit: "unit" };
+    if (/\bdocena\b/.test(n)) return { amount: 12, unit: "unit" };
+  }
+  if (categoryId === "laundry_detergent") {
+    const washes = n.match(/(\d+)\s*(?:lv|lavados|dosis|l)\b/);
+    if (washes && Number(washes[1]) >= 10) return { amount: Number(washes[1]), unit: "unit" };
+  }
+  return null;
+}
 function parseConsumProduct(item) {
   const name = displayName(item);
   if (!name || item.id === void 0 || item.id === null) return null;
   const brand = item.productData?.brand?.name?.trim() || void 0;
   const ean = item.ean && /^\d{8,14}$/.test(item.ean.trim()) ? item.ean.trim() : void 0;
+  const categoryId = classifyProduct(name, brand);
   return {
     chain: "consum",
     chainProductId: String(item.id),
@@ -1004,8 +1076,8 @@ function parseConsumProduct(item) {
     brand,
     ean,
     isOwnBrand: isOwnBrand("consum", brand),
-    categoryId: classifyProduct(name, brand),
-    size: consumSize(item),
+    categoryId,
+    size: countFromName(name, categoryId) ?? consumSize(item),
     imageUrl: item.productData?.imageURL ?? void 0
   };
 }
@@ -1503,6 +1575,15 @@ var DEFAULT_POSTAL_CODES = ["08001", "08012", "08014", "08018", "08027", "08028"
 async function save(ctx, chain, result, log, label) {
   const classified = result.products.filter((p) => p.categoryId).length;
   log(`${label}: ${result.products.length} products (${classified} matched to generic items), ${result.prices.length} prices`);
+  const priceById = new Map(result.prices.map((p) => [p.chainProductId, p]));
+  const implausible = [];
+  for (const p of result.products) {
+    if (p.categoryId && !plausibleUnitPrice(p.categoryId, priceById.get(p.chainProductId)?.unitPrice ?? null, p.size?.unit)) {
+      implausible.push(`${p.name} (${p.categoryId})`);
+      p.categoryId = null;
+    }
+  }
+  if (implausible.length) log(`taken out of their item for an implausible unit price: ${implausible.slice(0, 10).join(" | ")}${implausible.length > 10 ? ` \u2026 +${implausible.length - 10}` : ""}`);
   const perItem = /* @__PURE__ */ new Map();
   for (const p of result.products) if (p.categoryId) perItem.set(p.categoryId, (perItem.get(p.categoryId) ?? 0) + 1);
   const missing = CATEGORIES.map((c) => c.id).filter((id) => !perItem.has(id));
