@@ -4,6 +4,7 @@ import { useEffect, useMemo, useState } from 'react';
 import { Pressable, View } from 'react-native';
 
 import { sourceLabel, unitPriceLabel } from '@/components/format';
+import { PriceAlertCard } from '@/components/PriceAlerts';
 import { PriceHistoryChart } from '@/components/PriceHistoryChart';
 import { Badge, Button, Card, Divider, Row, Screen, T } from '@/components/ui';
 import { latestByProduct } from '@/data/prices';
@@ -102,6 +103,7 @@ export default function ProductScreen() {
       ) : null}
 
       <Button label={added ? t('addedToList') : t('addToList')} onPress={addToList} disabled={added} />
+      <PriceAlertCard product={product} obs={obs} />
 
       <Card>
         <T variant="heading">{exact.length > 1 ? t('exactMatch') : t('pricesByChain')}</T>

@@ -49,7 +49,16 @@
         {
           "locationWhenInUsePermission": "Quin Súper uses your location to find supermarkets near you."
         }
-      ]
+      ],
+      [
+        "expo-notifications",
+        {
+          "icon": "./assets/images/android-icon-monochrome.png",
+          "color": "#0B6E5A",
+          "enableRemoteNotifications": false
+        }
+      ],
+      "expo-background-task"
     ],
     "experiments": {
       "typedRoutes": true

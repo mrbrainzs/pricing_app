@@ -12,6 +12,7 @@
 - **Basket comparison (F4):** the nearest store of each chain, ranked by what your list costs there, with distance, items found and the gap to the next store. Optional "up to 2 stores" mode, shown only when it saves your minimum (default €3). Directions and share.
 - **Product search (F2)** in any of the three languages, plus a **product page (F5)**: price per chain, unit prices, own-brand equivalents, good / normal / high price label, 90-day history (F6).
 - **Freshness labels (F8)** on every price: source and time. Prices older than 3 days are flagged; older than 7 days are dropped.
+- **Price alerts (F7):** on a product, "Alert me when the price drops" with a target price or "any drop". Alerts stay on the device. The app checks them against fresh prices when it opens and when it comes back to the front after the daily update. Phones get a local notification (product, new price, chain, previous price) and also try a background check, but the phone decides when that runs. The web shows drops in the app only. Manage alerts from Settings.
 
 The deployed app reads real prices from a **local SQLite database** through a read-only API. The daily importer runs on the same server. When no recent prices are available, explicitly labelled sample data is shown instead. Prices are imported for **Mercadona**, **Consum** (added as a seventh chain: open catalogue, many shops around Barcelona) and **bonÀrea**. Store locations come from OpenStreetMap, refreshed weekly by the same import; chains without prices yet are named in the app instead of ranked. DIA and Bonpreu/Esclat refuse automated requests (HTTP 403).
 
@@ -71,5 +72,5 @@ The owner asked to skip arranging the Spanish IP lawyer review on 4 November 202
 ## Next milestones
 
 - Price importers for Alcampo and Caprabo; DIA and Bonpreu/Esclat block automated requests (partnership or receipts instead)
-- Price alerts with push notifications (F7), barcode scanner (F9), shared lists (F10), share card (F11), weekly basket index (F12)
+- Server-side push for price alerts (needs accounts), barcode scanner (F9), shared lists (F10), share card (F11), weekly basket index (F12)
 - v1.1: receipt scanner (UC5), opening hours, flatmate cost splitting
