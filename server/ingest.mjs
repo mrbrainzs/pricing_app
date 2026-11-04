@@ -830,7 +830,8 @@ function parseBonareaPage(html) {
     const code = c.match(/data-identifier=["']?([0-9]{2}\*[0-9]+)/)?.[1];
     const name = c.match(/<div class=["']?text["']?><p>([^<]+)/)?.[1];
     if (!code || !name) continue;
-    const price = c.match(/<div class=["']?price["']?>\s*<span>\s*([\d.,]+)\s*€\/u\.?\s*<\/span>/);
+    const price = c.match(/<div class=["']?price["']?>\s*<span>\s*([\d.,]+)\s*€\/(u|kg|l)\.?\s*<\/span>/);
+    const priceLine = c.match(/<div class=["']?price["']?>([\s\S]*?)<\/div>/)?.[1];
     const unit = c.match(/<div class=["']?price["']?>[\s\S]*?<\/span>\s*\(\s*([\d.,]+)\s*€\/(kg|l|ml|u)\.?\s*\)/);
     const unitValue = unit ? euro(unit[1]) : null;
     out.push({
@@ -840,6 +841,8 @@ function parseBonareaPage(html) {
       name: decodeHtml(name).replace(/\s+/g, " ").trim(),
       weight: c.match(/<div class=["']?weight["']?>([^<]*)<\/div>/)?.[1]?.trim() || void 0,
       price: price ? euro(price[1]) : null,
+      pricePer: price ? price[2] : null,
+      priceText: priceLine ? decodeHtml(priceLine.replace(/<[^>]+>/g, " ")).replace(/\s+/g, " ").trim() : void 0,
       unitPrice: unit && unitValue ? { value: unitValue, unit: unit[2] } : null,
       outOfStock: c.includes("block-no-stock")
     });
@@ -871,7 +874,8 @@ function cardToProduct(card) {
     brand: known ?? (own ? "bon\xC0rea" : void 0),
     isOwnBrand: own,
     categoryId: classifyProduct(card.name, known),
-    size: bonareaSize(card),
+    // Sold by weight: the shelf price is for 1 kg (or 1 l), whatever the approximate piece weighs.
+    size: card.pricePer === "kg" || card.pricePer === "l" ? { amount: 1, unit: card.pricePer } : bonareaSize(card),
     imageUrl: card.imageUrl
   };
 }
@@ -879,7 +883,8 @@ function cardToPrice(card, size, observedAt) {
   if (card.outOfStock || !card.price || card.price > MAX_PRICE) return null;
   const base = card.unitPrice ? UNIT_BASE[card.unitPrice.unit] : void 0;
   let unitPrice = null;
-  if (card.unitPrice && base && (!size || size.unit === base)) unitPrice = card.unitPrice.value;
+  if (card.pricePer === "kg" || card.pricePer === "l") unitPrice = card.price;
+  else if (card.unitPrice && base && (!size || size.unit === base)) unitPrice = card.unitPrice.value;
   else if (size) unitPrice = round(card.price / size.amount, 4);
   return {
     chain: "bonarea",
@@ -904,16 +909,40 @@ async function scrapeBonarea(http, opts = {}) {
     });
     const cards = parseBonareaPage(await res.text());
     if (cards.length === 0) emptyPages++;
+    const dropped = /* @__PURE__ */ new Map();
+    const drop = (reason, example) => dropped.set(reason, [...dropped.get(reason) ?? [], example]);
+    const before = products.size;
     for (const card of cards) {
-      if (products.has(card.code)) continue;
+      if (products.has(card.code)) {
+        drop("already kept", card.name);
+        continue;
+      }
       const product = cardToProduct(card);
-      if (!product.categoryId || !product.size) continue;
+      if (!product.categoryId) {
+        drop("not one of our items", card.name);
+        continue;
+      }
+      if (!product.size) {
+        drop("no size", `${card.name} [${card.weight ?? "no weight"}]`);
+        continue;
+      }
       const price = cardToPrice(card, product.size, observedAt);
-      if (!price) continue;
+      if (!price) {
+        if (card.outOfStock) drop("out of stock", card.name);
+        else drop("price unreadable", `${card.name} [${card.priceText ?? "no price line"}]`);
+        continue;
+      }
       products.set(card.code, product);
       prices2.set(card.code, price);
     }
-    log(`"${term}": ${cards.length} cards, ${products.size} products kept so far`);
+    const reasons = [...dropped].map(([r, names]) => `${r} ${names.length}`).join(", ");
+    log(`"${term}": ${cards.length} cards, ${products.size - before} new kept${reasons ? ` (dropped: ${reasons})` : ""}`);
+    if (opts.explain) {
+      for (const [reason, names] of dropped) {
+        if (reason === "already kept") continue;
+        log(`    ${reason}: ${names.slice(0, 6).join(" | ")}`);
+      }
+    }
   }
   if (emptyPages > 0) log(`${emptyPages} searches returned no product cards`);
   return { products: [...products.values()], prices: [...prices2.values()] };
@@ -1467,6 +1496,11 @@ var DEFAULT_POSTAL_CODES = ["08001", "08012", "08014", "08018", "08027", "08028"
 async function save(ctx, chain, result, log, label) {
   const classified = result.products.filter((p) => p.categoryId).length;
   log(`${label}: ${result.products.length} products (${classified} matched to generic items), ${result.prices.length} prices`);
+  const perItem = /* @__PURE__ */ new Map();
+  for (const p of result.products) if (p.categoryId) perItem.set(p.categoryId, (perItem.get(p.categoryId) ?? 0) + 1);
+  const missing = CATEGORIES.map((c) => c.id).filter((id) => !perItem.has(id));
+  log(`per item: ${[...perItem].map(([id, n]) => `${id} ${n}`).join(", ")}`);
+  if (missing.length) log(`no products for: ${missing.join(", ")}`);
   const saved = await ctx.sink.save(chain, result.products, result.prices);
   log(`saved ${saved.products} products, ${saved.prices} prices${saved.shrunk.length ? `, size went down: ${saved.shrunk.join(", ")}` : ""}`);
 }
@@ -1507,7 +1541,7 @@ var importConsum = async (ctx, log) => {
 };
 var importBonarea = async (ctx, log) => {
   const terms = genericSearchTerms("es").slice(0, ctx.maxCategories);
-  const result = await scrapeBonarea(ctx.http, { terms, log });
+  const result = await scrapeBonarea(ctx.http, { terms, log, explain: ctx.explain });
   if (result.products.length < Math.min(20, terms.length)) {
     throw new Error(`only ${result.products.length} products found for ${terms.length} searches; the page layout may have changed`);
   }
@@ -1523,7 +1557,8 @@ async function main() {
       details: { type: "string", default: "new" },
       "max-categories": { type: "string" },
       out: { type: "string", default: "out" },
-      stores: { type: "string", default: "auto" }
+      stores: { type: "string", default: "auto" },
+      explain: { type: "boolean", default: false }
     }
   });
   let sink;
@@ -1558,7 +1593,8 @@ async function main() {
     http,
     postalCodes: values.postal.split(",").map((s) => s.trim()).filter(Boolean),
     details: values.details,
-    maxCategories: values["max-categories"] ? Number(values["max-categories"]) : void 0
+    maxCategories: values["max-categories"] ? Number(values["max-categories"]) : void 0,
+    explain: values.explain ?? false
   };
   const failed = [];
   for (const chain of chains) {
