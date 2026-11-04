@@ -57,7 +57,27 @@ data; samples are never mixed with imported prices or real store locations.
 
 `quinsuper-import.timer` runs the local importer at **05:30 Europe/Madrid**,
 including daylight-saving changes. It survives reboot and catches missed runs.
-Mercadona is the only implemented chain. The old Supabase GitHub import
+Price importers: **Mercadona** (whole catalogue, per warehouse) and **Consum**
+(one search per generic item; one online price for all shops, zone `cat`). Each
+chain runs on its own: if one fails, the others still import and the service
+exits with an error so the failure is visible in systemd. A Consum run that finds
+almost nothing is treated as a failure instead of being saved.
+
+**One-time server change (Nov 2026):** the import unit must run `--chain all`
+instead of `--chain mercadona`, or only Mercadona keeps importing. Update service
+files are not installed by the updater, so an administrator runs:
+
+```bash
+sudo sed -i 's/--chain mercadona/--chain all/' /etc/systemd/system/quinsuper-import.service
+sudo systemctl daemon-reload
+```
+
+Chains not yet imported: DIA refuses automated requests (HTTP 403, as found by
+the open-source Preuet project). Bonpreu/Esclat and bonÀrea have no bulk catalogue
+API; their importers wait for a saved real page to build against. Alcampo and
+Caprabo are untested.
+
+The old Supabase GitHub import
 workflow was replaced with this local timer so SQLite stays on the server.
 A request timeout, retry/backoff and sequential request delay are configured.
 Unverified postal-code zones cause failure instead of silently assigning a zone.
@@ -99,7 +119,8 @@ Check the last refresh:
 sudo sqlite3 /var/lib/quinsuper/prices.sqlite "SELECT * FROM import_runs"
 ```
 
-Other chains' price importers remain a separate milestone.
+Consum stores (brand or name starting with "Consum") are included; Charter
+franchises and anything else merely containing the word "consum" are not.
 
 `quinsuper-backup.timer` creates and integrity-checks an online SQLite backup
 at **04:30 Europe/Madrid**, including committed WAL data, retaining 14 days

@@ -2,26 +2,88 @@
  * Daily price import.
  *
  *   npm run ingest -w @pricing/ingest -- --chain mercadona --postal 08001,08012 --sink json
- *   DATABASE_PATH=/var/lib/quinsuper/prices.sqlite npm run ingest -w @pricing/ingest -- --sink sqlite
+ *   DATABASE_PATH=/var/lib/quinsuper/prices.sqlite npm run ingest -w @pricing/ingest -- --chain all --sink sqlite
  *
  * Options:
- *   --chain        chain to import (v1: mercadona)
- *   --postal       comma-separated postal codes; each distinct pricing zone is imported once
+ *   --chain        mercadona, consum, a comma-separated list, or all
+ *   --postal       Mercadona: comma-separated postal codes; each distinct pricing zone is imported once
  *   --sink         json (writes ./out) or sqlite (local DATABASE_PATH)
- *   --details      new (default): fetch brand/EAN only for unseen products; all; none
- *   --max-categories N   stop early, for test runs
+ *   --details      Mercadona: new (default) fetches brand/EAN only for unseen products; all; none
+ *   --max-categories N   stop early, for test runs (Mercadona categories / Consum search terms)
  *   --stores       auto (default): with sqlite, refresh store locations from OpenStreetMap
  *                  when they are more than 7 days old; force; skip; only (stores, no prices)
+ *
+ * Each chain is imported on its own: if one fails, the others still run, and the
+ * command exits with an error at the end so the failure shows in systemd.
  */
 import { parseArgs } from 'node:util';
-import { PoliteClient } from './http';
+import { consumSearchTerms, scrapeConsum } from './chains/consum';
 import { mercadonaWarehouse, scrapeMercadona } from './chains/mercadona';
+import { storeZones } from './database';
+import { PoliteClient } from './http';
 import { JsonSink, type Sink } from './sink';
 import { SqliteSink } from './sqliteSink';
-import { storeZones } from './database';
 import { refreshStores, storesDue } from './stores/refresh';
+import type { ScrapeResult } from './types';
 
 const DEFAULT_POSTAL_CODES = ['08001', '08012', '08014', '08018', '08027', '08028'];
+
+interface ImportContext {
+  sink: Sink;
+  http: PoliteClient;
+  postalCodes: string[];
+  details: string;
+  maxCategories?: number;
+}
+
+type Importer = (ctx: ImportContext, log: (m: string) => void) => Promise<void>;
+
+async function save(ctx: ImportContext, chain: 'mercadona' | 'consum', result: ScrapeResult, log: (m: string) => void, label: string) {
+  const classified = result.products.filter((p) => p.categoryId).length;
+  log(`${label}: ${result.products.length} products (${classified} matched to generic items), ${result.prices.length} prices`);
+  const saved = await ctx.sink.save(chain, result.products, result.prices);
+  log(`saved ${saved.products} products, ${saved.prices} prices${saved.shrunk.length ? `, size went down: ${saved.shrunk.join(', ')}` : ''}`);
+}
+
+const importMercadona: Importer = async (ctx, log) => {
+  const zones = new Map<string, string>();
+  for (const pc of ctx.postalCodes) {
+    const wh = await mercadonaWarehouse(ctx.http, pc);
+    log(`postal code ${pc} -> warehouse ${wh}`);
+    if (!zones.has(wh)) zones.set(wh, pc);
+  }
+  if (ctx.sink instanceof SqliteSink) {
+    for (const [zone, pc] of storeZones(ctx.sink.db, 'mercadona')) {
+      if (!zones.has(zone)) {
+        zones.set(zone, pc);
+        log(`warehouse ${zone} added because stores use it (postal code ${pc})`);
+      }
+    }
+  }
+  const existing = await ctx.sink.existingProducts('mercadona');
+  const seenDetail = new Set<string>();
+  const needsDetail = (id: string) => {
+    if (ctx.details === 'none' || seenDetail.has(id)) return false;
+    seenDetail.add(id);
+    return ctx.details === 'all' || !existing.get(id)?.ean;
+  };
+  for (const wh of zones.keys()) {
+    const result = await scrapeMercadona(ctx.http, { warehouse: wh, needsDetail, maxCategories: ctx.maxCategories, log });
+    await save(ctx, 'mercadona', result, log, `warehouse ${wh}`);
+  }
+};
+
+const importConsum: Importer = async (ctx, log) => {
+  const terms = consumSearchTerms().slice(0, ctx.maxCategories);
+  const result = await scrapeConsum(ctx.http, { terms, log });
+  // A search that suddenly finds almost nothing means the shop changed; don't record it as real.
+  if (result.products.length < Math.min(20, terms.length)) {
+    throw new Error(`only ${result.products.length} products found for ${terms.length} searches; the shop may have changed`);
+  }
+  await save(ctx, 'consum', result, log, 'online shop');
+};
+
+const IMPORTERS: Record<string, Importer> = { mercadona: importMercadona, consum: importConsum };
 
 async function main() {
   const { values } = parseArgs({
@@ -44,10 +106,11 @@ async function main() {
     sink = new JsonSink(values.out!);
   } else throw new Error('Unknown sink. Use json or sqlite.');
 
-  if (values.chain !== 'mercadona') {
-    throw new Error(`Chain "${values.chain}" has no importer yet. v1 importers: mercadona.`);
+  const chains = values.chain === 'all' ? Object.keys(IMPORTERS) : values.chain!.split(',').map((c) => c.trim()).filter(Boolean);
+  const unknown = chains.filter((c) => !IMPORTERS[c]);
+  if (unknown.length || chains.length === 0) {
+    throw new Error(`No importer for "${unknown.join(', ')}". Importers: ${Object.keys(IMPORTERS).join(', ')} (or all).`);
   }
-
   if (!['auto', 'force', 'skip', 'only'].includes(values.stores!)) throw new Error('--stores must be auto, force, skip or only.');
   const http = new PoliteClient({ delayMs: 400 });
 
@@ -67,43 +130,24 @@ async function main() {
     throw new Error('--stores only needs --sink sqlite.');
   }
 
-  const log = (m: string) => console.log(`[mercadona] ${m}`);
-  const postalCodes = values.postal!.split(',').map((s) => s.trim()).filter(Boolean);
-  const zones = new Map<string, string>();
-  for (const pc of postalCodes) {
-    const wh = await mercadonaWarehouse(http, pc);
-    log(`postal code ${pc} -> warehouse ${wh}`);
-    if (!zones.has(wh)) zones.set(wh, pc);
-  }
-  if (sink instanceof SqliteSink) {
-    for (const [zone, pc] of storeZones(sink.db, 'mercadona')) {
-      if (!zones.has(zone)) {
-        zones.set(zone, pc);
-        log(`warehouse ${zone} added because stores use it (postal code ${pc})`);
-      }
+  const ctx: ImportContext = {
+    sink,
+    http,
+    postalCodes: values.postal!.split(',').map((s) => s.trim()).filter(Boolean),
+    details: values.details!,
+    maxCategories: values['max-categories'] ? Number(values['max-categories']) : undefined,
+  };
+  const failed: string[] = [];
+  for (const chain of chains) {
+    const log = (m: string) => console.log(`[${chain}] ${m}`);
+    try {
+      await IMPORTERS[chain]!(ctx, log);
+    } catch (err) {
+      failed.push(chain);
+      console.error(`[${chain}] import failed: ${(err as Error).message}`);
     }
   }
-
-  const existing = await sink.existingProducts('mercadona');
-  const seenDetail = new Set<string>();
-  const needsDetail = (id: string) => {
-    if (values.details === 'none' || seenDetail.has(id)) return false;
-    seenDetail.add(id);
-    return values.details === 'all' || !existing.get(id)?.ean;
-  };
-
-  for (const wh of zones.keys()) {
-    const result = await scrapeMercadona(http, {
-      warehouse: wh,
-      needsDetail,
-      maxCategories: values['max-categories'] ? Number(values['max-categories']) : undefined,
-      log,
-    });
-    const classified = result.products.filter((p) => p.categoryId).length;
-    log(`warehouse ${wh}: ${result.products.length} products (${classified} matched to generic items), ${result.prices.length} prices`);
-    const saved = await sink.save('mercadona', result.products, result.prices);
-    log(`saved ${saved.products} products, ${saved.prices} prices${saved.shrunk.length ? `, size went down: ${saved.shrunk.join(', ')}` : ''}`);
-  }
+  if (failed.length) throw new Error(`Import failed for: ${failed.join(', ')}`);
 }
 
 main().catch((err) => {

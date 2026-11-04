@@ -34,6 +34,8 @@ const CHAIN_PATTERNS: [ChainId, RegExp][] = [
   ['bonarea', /\bbon ?area\b/],
   ['caprabo', /\bcaprabo\b/],
   ['bonpreu', /\bbon ?preu\b|\besclat\b/],
+  // "Consum" at the start only: "Cooperativa de Consum …" is a different shop. Charter franchises are left out.
+  ['consum', /^consum( |$)/],
   // "Dia", "DIA", "Dia Market", "La Plaza de DIA" — but not "Diagonal" or "Super Dia y Noche".
   ['dia', /^(la plaza de )?dia( market| maxi)?$/],
 ];

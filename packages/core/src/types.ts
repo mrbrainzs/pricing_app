@@ -1,5 +1,5 @@
-/** Chains covered by Cabàs. Only the first six have online prices in v1. */
-export const ONLINE_CHAINS = ['mercadona', 'alcampo', 'bonarea', 'caprabo', 'dia', 'bonpreu'] as const;
+/** Chains whose online prices are collected (Consum added Nov 2026: open catalogue, many shops in Catalonia). */
+export const ONLINE_CHAINS = ['mercadona', 'alcampo', 'bonarea', 'caprabo', 'dia', 'bonpreu', 'consum'] as const;
 export const OFFLINE_CHAINS = ['aldi', 'condis', 'lidl'] as const;
 export type ChainId = (typeof ONLINE_CHAINS)[number] | (typeof OFFLINE_CHAINS)[number];
 

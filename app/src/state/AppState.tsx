@@ -33,6 +33,16 @@ interface Persisted {
 
 const STORAGE_KEY = 'quinsuper:state:v1';
 
+/** Chains offered before Consum was added (Nov 2026). */
+const ORIGINAL_CHAINS: ChainId[] = ['mercadona', 'alcampo', 'bonarea', 'caprabo', 'dia', 'bonpreu'];
+
+/** People who had every chain selected also get chains added later; a narrower choice is kept as is. */
+function withNewChains(saved: ChainId[] | undefined): ChainId[] {
+  if (!saved?.length) return [...ONLINE_CHAINS];
+  const hadAll = ORIGINAL_CHAINS.every((c) => saved.includes(c));
+  return hadAll ? [...new Set<ChainId>([...saved, ...ONLINE_CHAINS])] : saved;
+}
+
 const defaultSettings = (): Settings => ({
   lang: deviceLanguage(),
   postalCode: null,
@@ -74,7 +84,7 @@ export function AppStateProvider({ children }: { children: ReactNode }) {
         const raw = await AsyncStorage.getItem(STORAGE_KEY);
         if (raw) {
           const saved = JSON.parse(raw) as Partial<Persisted>;
-          if (saved.settings) setSettings({ ...defaultSettings(), ...saved.settings });
+          if (saved.settings) setSettings({ ...defaultSettings(), ...saved.settings, chains: withNewChains(saved.settings.chains) });
           if (saved.items) setItems(saved.items);
         }
       } catch {

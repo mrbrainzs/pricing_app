@@ -34,6 +34,8 @@ describe('OpenStreetMap stores', () => {
     expect(chainFromTags({ name: 'Diagonal Market' })).toBeNull();
     expect(chainFromTags({ name: 'Super Dia y Noche' })).toBeNull();
     expect(chainFromTags({ name: 'Lidl' })).toBeNull();
+    expect(chainFromTags({ brand: 'Consum', name: 'Consum' })).toBe('consum');
+    expect(chainFromTags({ name: 'Cooperativa de Consum El Cabàs' })).toBeNull();
   });
 
   it('parses positions, addresses, postal codes and opening hours', () => {
