@@ -1028,6 +1028,153 @@ function weeklyBasketIndex(input) {
   };
 }
 
+// packages/core/src/sharedList.ts
+var SHARED_LIST_LIMITS = {
+  /** Request body, in bytes. */
+  maxBodyBytes: 32 * 1024,
+  maxItems: 300,
+  /** Characters (code points), after trimming. */
+  maxTextLength: 120,
+  maxBrandLength: 60,
+  maxItemIdLength: 40,
+  minQuantity: 1,
+  maxQuantity: 99,
+  maxOpsPerRequest: 100,
+  /** Lists nobody opened or edited for this long are deleted. */
+  ttlDays: 180
+};
+var SHARED_LIST_ID_PATTERN = /^[A-Za-z0-9_-]{22}$/;
+var ITEM_ID_PATTERN = /^[A-Za-z0-9_-]{1,40}$/;
+var FORBIDDEN_CHARS = /[\u0000-\u001f\u007f-\u009f\u2028\u2029\u202a-\u202e\u2066-\u2069\ufeff]/;
+function isSharedListId(value) {
+  return typeof value === "string" && SHARED_LIST_ID_PATTERN.test(value);
+}
+function isSharedItemId(value) {
+  return typeof value === "string" && ITEM_ID_PATTERN.test(value);
+}
+function textLength(text) {
+  return Array.from(text).length;
+}
+var fail = (error, index2) => index2 === void 0 ? { ok: false, error } : { ok: false, error, index: index2 };
+function isPlainObject(value) {
+  return typeof value === "object" && value !== null && !Array.isArray(value) && Object.getPrototypeOf(value) === Object.prototype;
+}
+function unknownKey(value, allowed) {
+  return Object.keys(value).find((k) => !allowed.includes(k));
+}
+function parseText(value, path, max, allowEmpty) {
+  if (typeof value !== "string") return fail(`${path} must be a string`);
+  if (FORBIDDEN_CHARS.test(value)) return fail(`${path} contains control characters`);
+  const text = value.trim();
+  if (!allowEmpty && !text) return fail(`${path} must not be empty`);
+  if (textLength(text) > max) return fail(`${path} must be at most ${max} characters`);
+  return { ok: true, value: text };
+}
+function parseLevel(value, path) {
+  if (!isPlainObject(value)) return fail(`${path} must be an object`);
+  if (value.kind === "own" || value.kind === "any") {
+    if (unknownKey(value, ["kind"])) return fail(`${path} has an unknown field`);
+    return { ok: true, value: { kind: value.kind } };
+  }
+  if (value.kind === "specific") {
+    if (unknownKey(value, ["kind", "brand"])) return fail(`${path} has an unknown field`);
+    const brand = parseText(value.brand, `${path}.brand`, SHARED_LIST_LIMITS.maxBrandLength, true);
+    return brand.ok ? { ok: true, value: { kind: "specific", brand: brand.value } } : brand;
+  }
+  return fail(`${path}.kind must be "own", "any" or "specific"`);
+}
+var FIELD_NAMES = ["text", "categoryId", "level", "quantity", "checked"];
+function parseField(name, value, path) {
+  switch (name) {
+    case "text":
+      return parseText(value, path, SHARED_LIST_LIMITS.maxTextLength, false);
+    case "categoryId":
+      if (value === null) return { ok: true, value: null };
+      return typeof value === "string" && Object.prototype.hasOwnProperty.call(CATEGORY_BY_ID, value) ? { ok: true, value } : fail(`${path} must be null or a known category`);
+    case "level":
+      return parseLevel(value, path);
+    case "quantity":
+      return Number.isInteger(value) && value >= SHARED_LIST_LIMITS.minQuantity && value <= SHARED_LIST_LIMITS.maxQuantity ? { ok: true, value } : fail(`${path} must be a whole number from ${SHARED_LIST_LIMITS.minQuantity} to ${SHARED_LIST_LIMITS.maxQuantity}`);
+    case "checked":
+      return typeof value === "boolean" ? { ok: true, value } : fail(`${path} must be true or false`);
+  }
+}
+function parseSharedItem(value, path = "item") {
+  if (!isPlainObject(value)) return fail(`${path} must be an object`);
+  if (unknownKey(value, ["id", ...FIELD_NAMES])) return fail(`${path} has an unknown field`);
+  if (!isSharedItemId(value.id)) return fail(`${path}.id is not a valid item id`);
+  const item = { id: value.id };
+  for (const name of FIELD_NAMES) {
+    if (!(name in value)) return fail(`${path}.${name} is required`);
+    const field = parseField(name, value[name], `${path}.${name}`);
+    if (!field.ok) return field;
+    item[name] = field.value;
+  }
+  return { ok: true, value: item };
+}
+function parseSharedPatch(value, path = "set") {
+  if (!isPlainObject(value)) return fail(`${path} must be an object`);
+  if (unknownKey(value, FIELD_NAMES)) return fail(`${path} has an unknown field`);
+  const patch = {};
+  for (const name of FIELD_NAMES) {
+    if (!(name in value)) continue;
+    const field = parseField(name, value[name], `${path}.${name}`);
+    if (!field.ok) return field;
+    patch[name] = field.value;
+  }
+  if (Object.keys(patch).length === 0) return fail(`${path} must change at least one field`);
+  return { ok: true, value: patch };
+}
+function parseSharedOp(value, path = "op") {
+  if (!isPlainObject(value)) return fail(`${path} must be an object`);
+  if (value.op === "add") {
+    if (unknownKey(value, ["op", "item"])) return fail(`${path} has an unknown field`);
+    const item = parseSharedItem(value.item, `${path}.item`);
+    return item.ok ? { ok: true, value: { op: "add", item: item.value } } : item;
+  }
+  if (value.op === "update") {
+    if (unknownKey(value, ["op", "id", "set"])) return fail(`${path} has an unknown field`);
+    if (!isSharedItemId(value.id)) return fail(`${path}.id is not a valid item id`);
+    const set = parseSharedPatch(value.set, `${path}.set`);
+    return set.ok ? { ok: true, value: { op: "update", id: value.id, set: set.value } } : set;
+  }
+  if (value.op === "remove") {
+    if (unknownKey(value, ["op", "id"])) return fail(`${path} has an unknown field`);
+    if (!isSharedItemId(value.id)) return fail(`${path}.id is not a valid item id`);
+    return { ok: true, value: { op: "remove", id: value.id } };
+  }
+  return fail(`${path}.op must be "add", "update" or "remove"`);
+}
+function parseCreateBody(value) {
+  if (!isPlainObject(value)) return fail("body must be an object");
+  if (unknownKey(value, ["items"])) return fail("body has an unknown field");
+  if (!Array.isArray(value.items)) return fail("items must be an array");
+  if (value.items.length > SHARED_LIST_LIMITS.maxItems) return fail(`a list can have at most ${SHARED_LIST_LIMITS.maxItems} items`);
+  const items = [];
+  const ids = /* @__PURE__ */ new Set();
+  for (const [index2, raw] of value.items.entries()) {
+    const item = parseSharedItem(raw, `items[${index2}]`);
+    if (!item.ok) return fail(item.error, index2);
+    if (ids.has(item.value.id)) return fail(`items[${index2}].id is repeated`, index2);
+    ids.add(item.value.id);
+    items.push(item.value);
+  }
+  return { ok: true, value: { items } };
+}
+function parseOpsBody(value) {
+  if (!isPlainObject(value)) return fail("body must be an object");
+  if (unknownKey(value, ["ops"])) return fail("body has an unknown field");
+  if (!Array.isArray(value.ops) || value.ops.length === 0) return fail("ops must be a non-empty array");
+  if (value.ops.length > SHARED_LIST_LIMITS.maxOpsPerRequest) return fail(`at most ${SHARED_LIST_LIMITS.maxOpsPerRequest} operations per request`);
+  const ops = [];
+  for (const [index2, raw] of value.ops.entries()) {
+    const op = parseSharedOp(raw, `ops[${index2}]`);
+    if (!op.ok) return fail(op.error, index2);
+    ops.push(op.value);
+  }
+  return { ok: true, value: { ops } };
+}
+
 // ingest/src/database.ts
 import { createRequire } from "node:module";
 import { mkdirSync } from "node:fs";
@@ -1061,6 +1208,27 @@ function openDatabase(path) {
     INSERT OR IGNORE INTO schema_migrations VALUES(1, strftime('%Y-%m-%dT%H:%M:%fZ','now'));
     CREATE TABLE IF NOT EXISTS import_runs (name TEXT PRIMARY KEY, finished_at TEXT NOT NULL, detail TEXT);
     INSERT OR IGNORE INTO schema_migrations VALUES(2, strftime('%Y-%m-%dT%H:%M:%fZ','now'));
+    -- Shared lists (F10): no accounts or personal data; the random id is the only key.
+    -- accessed_at drives expiry (180 days without being opened or edited).
+    CREATE TABLE IF NOT EXISTS shared_lists (
+      id TEXT PRIMARY KEY CHECK(length(id) = 22), version INTEGER NOT NULL CHECK(version >= 1),
+      created_at TEXT NOT NULL, updated_at TEXT NOT NULL, accessed_at TEXT NOT NULL
+    );
+    CREATE INDEX IF NOT EXISTS shared_lists_accessed_idx ON shared_lists(accessed_at);
+    CREATE TABLE IF NOT EXISTS shared_list_items (
+      list_id TEXT NOT NULL REFERENCES shared_lists(id) ON DELETE CASCADE,
+      item_id TEXT NOT NULL CHECK(length(item_id) BETWEEN 1 AND 40),
+      position INTEGER NOT NULL,
+      text TEXT NOT NULL CHECK(length(text) BETWEEN 1 AND 120),
+      category_id TEXT,
+      level_kind TEXT NOT NULL CHECK(level_kind IN ('own','any','specific')),
+      brand TEXT CHECK(brand IS NULL OR length(brand) <= 60),
+      quantity INTEGER NOT NULL CHECK(quantity BETWEEN 1 AND 99),
+      checked INTEGER NOT NULL CHECK(checked IN (0,1)),
+      updated_at TEXT NOT NULL,
+      PRIMARY KEY(list_id, item_id)
+    ) WITHOUT ROWID;
+    INSERT OR IGNORE INTO schema_migrations VALUES(3, strftime('%Y-%m-%dT%H:%M:%fZ','now'));
   `);
   const chain = db2.prepare("INSERT OR IGNORE INTO chains VALUES(?, ?)");
   for (const c of Object.values(CHAINS)) chain.run(c.id, c.name);
@@ -1132,50 +1300,449 @@ function weeklyIndex(db2, now = /* @__PURE__ */ new Date()) {
   return weeklyBasketIndex({ products, prices, now, zones: { mercadona } });
 }
 
+// ingest/src/rateLimit.ts
+import { isIP } from "node:net";
+var RateLimiter = class {
+  constructor(capacity, perSecond, maxKeys = 5e4) {
+    this.capacity = capacity;
+    this.perSecond = perSecond;
+    this.maxKeys = maxKeys;
+  }
+  buckets = /* @__PURE__ */ new Map();
+  /** Takes `cost` tokens; returns 0 when allowed, otherwise seconds until it would be. */
+  take(key, cost = 1, now = Date.now()) {
+    if (cost > this.capacity) return Math.ceil((cost - this.capacity) / this.perSecond) || 1;
+    const bucket = this.buckets.get(key) ?? { tokens: this.capacity, at: now };
+    const tokens2 = Math.min(this.capacity, bucket.tokens + (now - bucket.at) / 1e3 * this.perSecond);
+    if (tokens2 < cost) {
+      this.buckets.set(key, { tokens: tokens2, at: now });
+      return Math.max(1, Math.ceil((cost - tokens2) / this.perSecond));
+    }
+    if (!this.buckets.has(key) && this.buckets.size >= this.maxKeys) this.prune(now);
+    this.buckets.set(key, { tokens: tokens2 - cost, at: now });
+    return 0;
+  }
+  /** Puts back tokens taken for a request that was then refused for another reason. */
+  refund(key, cost = 1) {
+    const bucket = this.buckets.get(key);
+    if (bucket) bucket.tokens = Math.min(this.capacity, bucket.tokens + cost);
+  }
+  /** Drops buckets that have refilled completely (they behave like new ones). */
+  prune(now = Date.now()) {
+    const fullAfterMs = this.capacity / this.perSecond * 1e3;
+    for (const [key, bucket] of this.buckets) if (now - bucket.at >= fullAfterMs) this.buckets.delete(key);
+    if (this.buckets.size >= this.maxKeys) {
+      const keys = [...this.buckets.keys()];
+      for (const key of keys.slice(0, Math.ceil(keys.length / 2))) this.buckets.delete(key);
+    }
+  }
+  get size() {
+    return this.buckets.size;
+  }
+};
+function isLoopback(address) {
+  return address === "::1" || address.startsWith("127.") || address.startsWith("::ffff:127.");
+}
+function addressKey(address) {
+  const mapped = /^::ffff:(\d+\.\d+\.\d+\.\d+)$/i.exec(address);
+  if (mapped) return mapped[1];
+  if (isIP(address) !== 6) return address;
+  const [head = "", tail = ""] = address.toLowerCase().split("::");
+  const left = head ? head.split(":") : [];
+  const right = tail ? tail.split(":") : [];
+  const groups = address.includes("::") ? [...left, ...Array(8 - left.length - right.length).fill("0"), ...right] : left;
+  return `${groups.slice(0, 4).map((g) => g.replace(/^0+(?=.)/, "")).join(":")}::/64`;
+}
+function clientKey(req) {
+  const peer = req.socket.remoteAddress ?? "unknown";
+  if (isLoopback(peer)) {
+    const header = req.headers["x-real-ip"];
+    const real = typeof header === "string" ? header.trim() : "";
+    if (real && isIP(real)) return addressKey(real);
+  }
+  return addressKey(peer);
+}
+
+// ingest/src/sharedLists.ts
+import { randomBytes } from "node:crypto";
+var DAY_MS2 = 864e5;
+var TOUCH_INTERVAL_MS = DAY_MS2;
+var ListFullError = class extends Error {
+  constructor() {
+    super("list_full");
+  }
+};
+function newSharedListId() {
+  return randomBytes(16).toString("base64url");
+}
+function expiryCutoff(now) {
+  return new Date(now.getTime() - SHARED_LIST_LIMITS.ttlDays * DAY_MS2).toISOString();
+}
+function rowToItem(r) {
+  const level = r.level_kind === "specific" ? { kind: "specific", brand: r.brand ?? "" } : { kind: r.level_kind };
+  return {
+    id: r.item_id,
+    text: r.text,
+    categoryId: r.category_id ?? null,
+    level,
+    quantity: Number(r.quantity),
+    checked: Number(r.checked) === 1
+  };
+}
+function readItems(db2, listId) {
+  return db2.prepare("SELECT * FROM shared_list_items WHERE list_id=? ORDER BY position, item_id").all(listId).map(rowToItem);
+}
+function insertItem(db2, listId, item, position, at) {
+  db2.prepare(`INSERT INTO shared_list_items
+    (list_id,item_id,position,text,category_id,level_kind,brand,quantity,checked,updated_at) VALUES(?,?,?,?,?,?,?,?,?,?)`).run(
+    listId,
+    item.id,
+    position,
+    item.text,
+    item.categoryId,
+    item.level.kind,
+    item.level.kind === "specific" ? item.level.brand : null,
+    item.quantity,
+    item.checked ? 1 : 0,
+    at
+  );
+}
+function transaction(db2, fn) {
+  db2.exec("BEGIN IMMEDIATE");
+  try {
+    const result = fn();
+    db2.exec("COMMIT");
+    return result;
+  } catch (err) {
+    db2.exec("ROLLBACK");
+    throw err;
+  }
+}
+function countSharedLists(db2) {
+  return Number(db2.prepare("SELECT COUNT(*) AS n FROM shared_lists").get()?.n ?? 0);
+}
+function createSharedList(db2, items, now = /* @__PURE__ */ new Date()) {
+  if (items.length > SHARED_LIST_LIMITS.maxItems) throw new ListFullError();
+  const at = now.toISOString();
+  const id = newSharedListId();
+  transaction(db2, () => {
+    db2.prepare("INSERT INTO shared_lists (id,version,created_at,updated_at,accessed_at) VALUES(?,1,?,?,?)").run(id, at, at, at);
+    items.forEach((item, i) => insertItem(db2, id, item, i + 1, at));
+  });
+  return { id, version: 1, updatedAt: at, items: readItems(db2, id) };
+}
+function listRow(db2, id, now) {
+  const row = db2.prepare("SELECT version, updated_at, accessed_at FROM shared_lists WHERE id=?").get(id);
+  if (!row) return null;
+  if (row.accessed_at < expiryCutoff(now)) return null;
+  return { version: Number(row.version), updatedAt: row.updated_at, accessedAt: row.accessed_at };
+}
+function getSharedList(db2, id, now = /* @__PURE__ */ new Date(), since) {
+  const row = listRow(db2, id, now);
+  if (!row) return null;
+  if (Date.parse(row.accessedAt) < now.getTime() - TOUCH_INTERVAL_MS) {
+    try {
+      db2.prepare("UPDATE shared_lists SET accessed_at=? WHERE id=?").run(now.toISOString(), id);
+    } catch {
+    }
+  }
+  if (since === row.version) return { id, version: row.version, updatedAt: row.updatedAt, unchanged: true };
+  return { id, version: row.version, updatedAt: row.updatedAt, items: readItems(db2, id) };
+}
+var COLUMNS = {
+  text: (p) => [["text", p.text]],
+  categoryId: (p) => [["category_id", p.categoryId]],
+  level: (p) => [["level_kind", p.level.kind], ["brand", p.level.kind === "specific" ? p.level.brand : null]],
+  quantity: (p) => [["quantity", p.quantity]],
+  checked: (p) => [["checked", p.checked ? 1 : 0]]
+};
+function applySharedListOps(db2, id, ops, now = /* @__PURE__ */ new Date()) {
+  const at = now.toISOString();
+  return transaction(db2, () => {
+    const row = listRow(db2, id, now);
+    if (!row) return null;
+    const rejected = [];
+    let changed = false;
+    let count = Number(db2.prepare("SELECT COUNT(*) AS n FROM shared_list_items WHERE list_id=?").get(id)?.n ?? 0);
+    let position = Number(db2.prepare("SELECT COALESCE(MAX(position), 0) AS p FROM shared_list_items WHERE list_id=?").get(id)?.p ?? 0);
+    const exists = db2.prepare("SELECT 1 AS x FROM shared_list_items WHERE list_id=? AND item_id=?");
+    ops.forEach((op, index2) => {
+      if (op.op === "add") {
+        if (exists.get(id, op.item.id)) return;
+        if (count >= SHARED_LIST_LIMITS.maxItems) {
+          rejected.push({ index: index2, error: "list_full" });
+          return;
+        }
+        position += 1;
+        count += 1;
+        insertItem(db2, id, op.item, position, at);
+        changed = true;
+      } else if (op.op === "update") {
+        const pairs = Object.keys(op.set).filter((k) => Object.prototype.hasOwnProperty.call(COLUMNS, k)).flatMap((k) => COLUMNS[k](op.set));
+        if (!pairs.length) return;
+        const result = db2.prepare(`UPDATE shared_list_items SET ${pairs.map(([c]) => `${c}=?`).join(",")}, updated_at=?
+          WHERE list_id=? AND item_id=?`).run(...pairs.map(([, v]) => v), at, id, op.id);
+        if (Number(result.changes) > 0) changed = true;
+      } else {
+        const result = db2.prepare("DELETE FROM shared_list_items WHERE list_id=? AND item_id=?").run(id, op.id);
+        if (Number(result.changes) > 0) {
+          changed = true;
+          count -= 1;
+        }
+      }
+    });
+    const version = changed ? row.version + 1 : row.version;
+    const updatedAt = changed ? at : row.updatedAt;
+    db2.prepare("UPDATE shared_lists SET version=?, updated_at=?, accessed_at=? WHERE id=?").run(version, updatedAt, at, id);
+    return { id, version, updatedAt, items: readItems(db2, id), rejected };
+  });
+}
+function deleteExpiredSharedLists(db2, now = /* @__PURE__ */ new Date()) {
+  return Number(db2.prepare("DELETE FROM shared_lists WHERE accessed_at < ?").run(expiryCutoff(now)).changes);
+}
+
+// ingest/src/api.ts
+var DEFAULT_WRITE_LIMITS = {
+  maxLists: 2e4,
+  createBurst: 10,
+  createPerHour: 20,
+  globalCreateBurst: 100,
+  globalCreatePerHour: 600,
+  opsBurst: 600,
+  opsPerMinute: 300,
+  globalOpsBurst: 3e3,
+  globalOpsPerMinute: 3e3
+};
+var HttpError = class extends Error {
+  constructor(status, code, detail, extra = {}, headers = {}) {
+    super(code);
+    this.status = status;
+    this.code = code;
+    this.detail = detail;
+    this.extra = extra;
+    this.headers = headers;
+  }
+};
+function send(res, status, data, headers = {}) {
+  res.writeHead(status, headers);
+  res.end(JSON.stringify(data));
+}
+function isBusy(err) {
+  const e = err;
+  return e?.errcode === 5 || e?.errcode === 6 || /database is locked|SQLITE_BUSY/i.test(e?.message ?? "");
+}
+var JSON_TYPE = /^application\/json\s*(?:;\s*charset\s*=\s*"?utf-8"?\s*)?$/i;
+async function readJson(req, maxBytes) {
+  if (!JSON_TYPE.test(req.headers["content-type"] ?? "")) throw new HttpError(415, "unsupported_media_type", "Content-Type must be application/json");
+  const declared = Number(req.headers["content-length"] ?? 0);
+  if (declared > maxBytes) {
+    req.resume();
+    throw new HttpError(413, "body_too_large", `at most ${maxBytes} bytes`);
+  }
+  const chunks = [];
+  let size = 0;
+  let tooLarge = false;
+  await new Promise((resolve, reject) => {
+    let ended = false;
+    req.on("data", (chunk) => {
+      size += chunk.length;
+      if (size > maxBytes) tooLarge = true;
+      else chunks.push(chunk);
+    });
+    req.on("end", () => {
+      ended = true;
+      resolve();
+    });
+    req.on("error", reject);
+    req.on("close", () => {
+      if (!ended) reject(new HttpError(400, "incomplete_body"));
+    });
+  });
+  if (tooLarge) throw new HttpError(413, "body_too_large", `at most ${maxBytes} bytes`);
+  let text;
+  try {
+    text = new TextDecoder("utf-8", { fatal: true }).decode(Buffer.concat(chunks));
+  } catch {
+    throw new HttpError(400, "invalid_json", "body is not valid UTF-8");
+  }
+  try {
+    return JSON.parse(text);
+  } catch {
+    throw new HttpError(400, "invalid_json", "body is not valid JSON");
+  }
+}
+function valid(parsed) {
+  if (parsed.ok) return parsed.value;
+  throw new HttpError(400, "invalid_request", parsed.error, parsed.index === void 0 ? {} : { index: parsed.index });
+}
+function createApiHandler(db2, options = {}) {
+  const now = options.now ?? (() => /* @__PURE__ */ new Date());
+  const limits = { ...DEFAULT_WRITE_LIMITS, ...options.limits };
+  const createLimiter = new RateLimiter(limits.createBurst, limits.createPerHour / 3600);
+  const globalCreateLimiter = new RateLimiter(limits.globalCreateBurst, limits.globalCreatePerHour / 3600);
+  const opsLimiter = new RateLimiter(limits.opsBurst, limits.opsPerMinute / 60);
+  const globalOpsLimiter = new RateLimiter(limits.globalOpsBurst, limits.globalOpsPerMinute / 60);
+  const limit = (client, global, key, cost) => {
+    const wait = client.take(key, cost);
+    if (wait) throw new HttpError(429, "rate_limited", "too many changes; try again later", {}, { "retry-after": String(wait) });
+    const globalWait = global.take("*", cost);
+    if (globalWait) {
+      client.refund(key, cost);
+      throw new HttpError(429, "rate_limited", "too many changes; try again later", {}, { "retry-after": String(globalWait) });
+    }
+  };
+  const applyOps = (key, listId, ops) => {
+    if (ops.length > 1) limit(opsLimiter, globalOpsLimiter, key, ops.length - 1);
+    const result = applySharedListOps(db2, listId, ops, now());
+    if (!result) throw new HttpError(404, "not_found");
+    return result;
+  };
+  async function lists(req, res, url) {
+    const parts = url.pathname.split("/").slice(3);
+    const [listId, sub, itemId, ...rest] = parts;
+    const method = req.method ?? "GET";
+    const allow = (methods) => {
+      if (!methods.split(", ").includes(method)) throw new HttpError(405, "method_not_allowed", void 0, {}, { allow: methods });
+    };
+    const key = clientKey(req);
+    if (listId === void 0) {
+      allow("POST");
+      limit(createLimiter, globalCreateLimiter, key, 1);
+      limit(opsLimiter, globalOpsLimiter, key, 1);
+      const body = valid(parseCreateBody(await readJson(req, SHARED_LIST_LIMITS.maxBodyBytes)));
+      if (body.items.length > 1) limit(opsLimiter, globalOpsLimiter, key, body.items.length - 1);
+      if (countSharedLists(db2) >= limits.maxLists) throw new HttpError(503, "capacity", "no room for new shared lists right now", {}, { "retry-after": "3600" });
+      const created = createSharedList(db2, body.items, now());
+      send(res, 201, created, { location: `/api/lists/${created.id}` });
+      return;
+    }
+    if (!isSharedListId(listId) || rest.length) throw new HttpError(404, "not_found");
+    if (sub === void 0) {
+      allow("GET");
+      const sinceParam = url.searchParams.get("since");
+      if (sinceParam !== null && !/^\d{1,15}$/.test(sinceParam)) throw new HttpError(400, "invalid_request", "since must be a version number");
+      const list = getSharedList(db2, listId, now(), sinceParam === null ? void 0 : Number(sinceParam));
+      if (!list) throw new HttpError(404, "not_found");
+      send(res, 200, list);
+      return;
+    }
+    if (sub === "ops" && itemId === void 0) {
+      allow("POST");
+      limit(opsLimiter, globalOpsLimiter, key, 1);
+      const { ops } = valid(parseOpsBody(await readJson(req, SHARED_LIST_LIMITS.maxBodyBytes)));
+      send(res, 200, applyOps(key, listId, ops));
+      return;
+    }
+    if (sub === "items" && itemId === void 0) {
+      allow("POST");
+      limit(opsLimiter, globalOpsLimiter, key, 1);
+      const item = valid(parseSharedItem(await readJson(req, SHARED_LIST_LIMITS.maxBodyBytes)));
+      const result = applyOps(key, listId, [{ op: "add", item }]);
+      if (result.rejected.length) throw new HttpError(409, "list_full", `a list can have at most ${SHARED_LIST_LIMITS.maxItems} items`);
+      send(res, 200, result);
+      return;
+    }
+    if (sub === "items" && isSharedItemId(itemId)) {
+      allow("PATCH, DELETE");
+      limit(opsLimiter, globalOpsLimiter, key, 1);
+      const op = method === "PATCH" ? { op: "update", id: itemId, set: valid(parseSharedPatch(await readJson(req, SHARED_LIST_LIMITS.maxBodyBytes))) } : { op: "remove", id: itemId };
+      send(res, 200, applyOps(key, listId, [op]));
+      return;
+    }
+    throw new HttpError(404, "not_found");
+  }
+  let indexCache = null;
+  const cachedWeeklyIndex = () => {
+    const at = now();
+    const moment = indexMoment(at).getTime();
+    if (!indexCache || indexCache.moment !== moment || at.getTime() > indexCache.until) {
+      indexCache = { moment, until: at.getTime() + 10 * 6e4, data: weeklyIndex(db2, at) };
+    }
+    return indexCache.data;
+  };
+  const handler2 = ((req, res) => {
+    res.setHeader("content-type", "application/json; charset=utf-8");
+    res.setHeader("x-content-type-options", "nosniff");
+    res.setHeader("cache-control", "no-store");
+    let url;
+    try {
+      url = new URL(req.url ?? "/", "http://localhost");
+    } catch {
+      res.writeHead(400);
+      res.end('{"error":"Bad request"}');
+      return;
+    }
+    if (url.pathname === "/api/lists" || url.pathname.startsWith("/api/lists/")) {
+      res.setHeader("x-robots-tag", "noindex, nofollow");
+      lists(req, res, url).catch((err) => {
+        if (res.headersSent) {
+          res.destroy();
+          return;
+        }
+        if (err instanceof HttpError) {
+          send(res, err.status, { error: err.code, ...err.detail ? { detail: err.detail } : {}, ...err.extra }, err.headers);
+        } else if (isBusy(err)) {
+          send(res, 503, { error: "busy" }, { "retry-after": "5" });
+        } else {
+          console.error(`Shared list request failed (${req.method}):`, err instanceof Error ? err.message : "unknown error");
+          send(res, 500, { error: "server_error" });
+        }
+      });
+      return;
+    }
+    if (req.method !== "GET") {
+      res.writeHead(405);
+      res.end('{"error":"Method not allowed"}');
+      return;
+    }
+    try {
+      let data;
+      if (url.pathname === "/api/health") {
+        const counts = db2.prepare(`SELECT COUNT(*) AS observations,MAX(observed_at) AS lastImport FROM price_observations`).get();
+        data = { status: "ok", database: "sqlite", release: options.release ?? "local", ...counts };
+      } else if (url.pathname === "/api/catalog") data = catalog(db2);
+      else if (url.pathname === "/api/index") data = cachedWeeklyIndex();
+      else if (url.pathname.startsWith("/api/history/")) data = history(db2, decodeURIComponent(url.pathname.slice("/api/history/".length)));
+      else {
+        res.writeHead(404);
+        res.end('{"error":"Not found"}');
+        return;
+      }
+      res.end(JSON.stringify(data));
+    } catch (err) {
+      console.error("API request failed", err);
+      res.writeHead(500);
+      res.end('{"error":"Database request failed"}');
+    }
+  });
+  handler2.maintenance = () => {
+    const expiredLists = deleteExpiredSharedLists(db2, now());
+    for (const limiter of [createLimiter, globalCreateLimiter, opsLimiter, globalOpsLimiter]) limiter.prune();
+    return { expiredLists };
+  };
+  return handler2;
+}
+
 // ingest/src/server.ts
 if (!process.env.DATABASE_PATH) throw new Error("DATABASE_PATH is required");
 var db = openDatabase(process.env.DATABASE_PATH);
-var indexCache = null;
-function cachedWeeklyIndex() {
-  const now = /* @__PURE__ */ new Date();
-  const moment = indexMoment(now).getTime();
-  if (!indexCache || indexCache.moment !== moment || now.getTime() > indexCache.until) {
-    indexCache = { moment, until: now.getTime() + 10 * 6e4, data: weeklyIndex(db, now) };
-  }
-  return indexCache.data;
-}
-var server = createServer((req, res) => {
-  res.setHeader("content-type", "application/json; charset=utf-8");
-  res.setHeader("x-content-type-options", "nosniff");
-  res.setHeader("cache-control", "no-store");
-  if (req.method !== "GET") {
-    res.writeHead(405);
-    res.end('{"error":"Method not allowed"}');
-    return;
-  }
+db.exec("PRAGMA busy_timeout=1500");
+var handler = createApiHandler(db, { release: process.env.RELEASE_SHA ?? "local" });
+var maintenance = () => {
   try {
-    const url = new URL(req.url ?? "/", "http://localhost");
-    let data;
-    if (url.pathname === "/api/health") {
-      const counts = db.prepare(`SELECT COUNT(*) AS observations,MAX(observed_at) AS lastImport FROM price_observations`).get();
-      data = { status: "ok", database: "sqlite", release: process.env.RELEASE_SHA ?? "local", ...counts };
-    } else if (url.pathname === "/api/catalog") data = catalog(db);
-    else if (url.pathname === "/api/index") data = cachedWeeklyIndex();
-    else if (url.pathname.startsWith("/api/history/")) data = history(db, decodeURIComponent(url.pathname.slice("/api/history/".length)));
-    else {
-      res.writeHead(404);
-      res.end('{"error":"Not found"}');
-      return;
-    }
-    res.end(JSON.stringify(data));
+    const { expiredLists } = handler.maintenance();
+    if (expiredLists) console.log(`Deleted ${expiredLists} shared lists unused for 180 days`);
   } catch (err) {
-    console.error("API request failed", err);
-    res.writeHead(500);
-    res.end('{"error":"Database request failed"}');
+    console.error("Shared-list cleanup failed:", err instanceof Error ? err.message : "unknown error");
   }
-});
+};
+maintenance();
+var timer = setInterval(maintenance, 6 * 36e5);
+timer.unref();
+var server = createServer(handler);
 server.listen(Number(process.env.PORT ?? 3007), "127.0.0.1");
 process.on("SIGTERM", () => server.close(() => {
+  clearInterval(timer);
   db.close();
   process.exit(0);
 }));

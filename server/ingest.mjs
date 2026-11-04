@@ -869,6 +869,22 @@ var B64_INDEX = new Map([...B64].map((c, i) => [c, i]));
 // packages/core/src/basketIndex.ts
 var INDEX_TIME_MINUTES = 7 * 60;
 
+// packages/core/src/sharedList.ts
+var SHARED_LIST_LIMITS = {
+  /** Request body, in bytes. */
+  maxBodyBytes: 32 * 1024,
+  maxItems: 300,
+  /** Characters (code points), after trimming. */
+  maxTextLength: 120,
+  maxBrandLength: 60,
+  maxItemIdLength: 40,
+  minQuantity: 1,
+  maxQuantity: 99,
+  maxOpsPerRequest: 100,
+  /** Lists nobody opened or edited for this long are deleted. */
+  ttlDays: 180
+};
+
 // ingest/src/chains/terms.ts
 function genericSearchTerms(lang = "es") {
   return [...new Set(CATEGORIES.map((c) => c.names[lang].toLowerCase()))];
@@ -1270,6 +1286,27 @@ function openDatabase(path) {
     INSERT OR IGNORE INTO schema_migrations VALUES(1, strftime('%Y-%m-%dT%H:%M:%fZ','now'));
     CREATE TABLE IF NOT EXISTS import_runs (name TEXT PRIMARY KEY, finished_at TEXT NOT NULL, detail TEXT);
     INSERT OR IGNORE INTO schema_migrations VALUES(2, strftime('%Y-%m-%dT%H:%M:%fZ','now'));
+    -- Shared lists (F10): no accounts or personal data; the random id is the only key.
+    -- accessed_at drives expiry (180 days without being opened or edited).
+    CREATE TABLE IF NOT EXISTS shared_lists (
+      id TEXT PRIMARY KEY CHECK(length(id) = 22), version INTEGER NOT NULL CHECK(version >= 1),
+      created_at TEXT NOT NULL, updated_at TEXT NOT NULL, accessed_at TEXT NOT NULL
+    );
+    CREATE INDEX IF NOT EXISTS shared_lists_accessed_idx ON shared_lists(accessed_at);
+    CREATE TABLE IF NOT EXISTS shared_list_items (
+      list_id TEXT NOT NULL REFERENCES shared_lists(id) ON DELETE CASCADE,
+      item_id TEXT NOT NULL CHECK(length(item_id) BETWEEN 1 AND 40),
+      position INTEGER NOT NULL,
+      text TEXT NOT NULL CHECK(length(text) BETWEEN 1 AND 120),
+      category_id TEXT,
+      level_kind TEXT NOT NULL CHECK(level_kind IN ('own','any','specific')),
+      brand TEXT CHECK(brand IS NULL OR length(brand) <= 60),
+      quantity INTEGER NOT NULL CHECK(quantity BETWEEN 1 AND 99),
+      checked INTEGER NOT NULL CHECK(checked IN (0,1)),
+      updated_at TEXT NOT NULL,
+      PRIMARY KEY(list_id, item_id)
+    ) WITHOUT ROWID;
+    INSERT OR IGNORE INTO schema_migrations VALUES(3, strftime('%Y-%m-%dT%H:%M:%fZ','now'));
   `);
   const chain = db.prepare("INSERT OR IGNORE INTO chains VALUES(?, ?)");
   for (const c of Object.values(CHAINS)) chain.run(c.id, c.name);
