@@ -4,9 +4,11 @@ import { useMemo, useState } from 'react';
 import { View } from 'react-native';
 
 import { ListItemRow } from '@/components/ListItemRow';
+import { SharedListStatus, ShareListButton } from '@/components/SharedListPanel';
 import { Button, Chip, Input, Row, Screen, T } from '@/components/ui';
 import { APP_NAME } from '@/i18n';
 import { useApp } from '@/state/AppState';
+import { useSharedList, useSharedListPolling } from '@/state/SharedList';
 import { space, useColors } from '@/theme';
 
 /** Generic items whose names (any language) start with or fuzzily match what's typed. */
@@ -27,10 +29,13 @@ function suggest(query: string, lang: Lang): Category[] {
 }
 
 export default function ListScreen() {
-  const { items, addItem, clearItems, settings, t } = useApp();
+  const { items, addItem, clearItems, removeItem, settings, t } = useApp();
+  const shared = useSharedList();
+  useSharedListPolling();
   const c = useColors();
   const [text, setText] = useState('');
   const suggestions = useMemo(() => suggest(text, settings.lang), [text, settings.lang]);
+  const ticked = items.filter((i) => i.checked);
 
   const submit = (value = text) => {
     if (!value.trim()) return;
@@ -44,6 +49,8 @@ export default function ListScreen() {
         <T variant="small" style={{ color: c.primary, fontWeight: '700' }}>{APP_NAME}</T>
         <T variant="title">{t('listTitle')}</T>
       </View>
+
+      <SharedListStatus />
 
       <View style={{ gap: space.sm }}>
         <Row>
@@ -79,12 +86,15 @@ export default function ListScreen() {
         </View>
       )}
 
-      {items.length > 0 ? (
-        <View style={{ gap: space.sm }}>
-          <Button label={`${t('compare')} (${items.length})`} onPress={() => router.push('/compare')} />
-          <Button label={t('clearList')} variant="ghost" onPress={clearItems} />
-        </View>
-      ) : null}
+      <View style={{ gap: space.sm }}>
+        {items.length > 0 ? <Button label={`${t('compare')} (${items.length})`} onPress={() => router.push('/compare')} /> : null}
+        {ticked.length > 0 ? (
+          <Button label={t('removeChecked', { n: ticked.length })} variant="ghost" onPress={() => ticked.forEach((i) => removeItem(i.id))} />
+        ) : null}
+        {/* On a shared list, emptying it would empty it for everyone: only ticked items can be removed in one go. */}
+        {items.length > 0 && !shared.id ? <Button label={t('clearList')} variant="ghost" onPress={clearItems} /> : null}
+        <ShareListButton />
+      </View>
     </Screen>
   );
 }

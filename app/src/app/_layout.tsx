@@ -3,7 +3,9 @@ import { StatusBar } from 'expo-status-bar';
 import { useColorScheme } from 'react-native';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
 
+import { APP_NAME } from '@/i18n';
 import { AppStateProvider, useApp } from '@/state/AppState';
+import { SharedListProvider } from '@/state/SharedList';
 import { useColors } from '@/theme';
 
 function RootStack() {
@@ -23,6 +25,7 @@ function RootStack() {
       <Stack.Screen name="compare" options={{ title: t('compareTitle') }} />
       <Stack.Screen name="product/[id]" options={{ title: '' }} />
       <Stack.Screen name="paste" options={{ title: t('pasteTitle'), presentation: 'modal' }} />
+      <Stack.Screen name="l/[id]" options={{ title: APP_NAME }} />
     </Stack>
   );
 }
@@ -33,8 +36,10 @@ export default function RootLayout() {
     <SafeAreaProvider>
       <ThemeProvider value={scheme === 'dark' ? DarkTheme : DefaultTheme}>
         <AppStateProvider>
-          <StatusBar style="auto" />
-          <RootStack />
+          <SharedListProvider>
+            <StatusBar style="auto" />
+            <RootStack />
+          </SharedListProvider>
         </AppStateProvider>
       </ThemeProvider>
     </SafeAreaProvider>

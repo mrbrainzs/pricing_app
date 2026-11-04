@@ -4,13 +4,14 @@ import {
   makeListItem,
   ONLINE_CHAINS,
   postalCodeLocation,
+  SHARED_LIST_LIMITS,
   type BrandLevel,
   type ChainId,
   type Lang,
   type LatLng,
   type ListItem,
 } from '@pricing/core';
-import { createContext, useCallback, useContext, useEffect, useMemo, useState, type ReactNode } from 'react';
+import { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
 
 import { configuredSource, type Catalog, type DataSource } from '@/data/source';
 import { deviceLanguage, translate, type StringKey } from '@/i18n';
@@ -53,6 +54,22 @@ const defaultSettings = (): Settings => ({
   onboarded: false,
 });
 
+/**
+ * Lets the shared-list sync (state/SharedList.tsx) see local edits and apply remote ones
+ * without being part of this file.
+ */
+export interface ItemsBridge {
+  /** The latest items, including edits React hasn't rendered yet. */
+  current(): ListItem[];
+  /** Replaces the items without reporting it as a local edit (a change from the server). */
+  replace(items: ListItem[]): void;
+  /** Called after every local edit with the items after and before it. */
+  setListener(listener: ((next: ListItem[], prev: ListItem[]) => void) | null): void;
+}
+
+const MAX_QUANTITY = SHARED_LIST_LIMITS.maxQuantity;
+const clampQuantity = (n: number) => Math.min(MAX_QUANTITY, Math.max(1, n));
+
 interface AppState {
   ready: boolean;
   settings: Settings;
@@ -60,9 +77,10 @@ interface AppState {
   items: ListItem[];
   addItem: (text: string, quantity?: number) => void;
   addItems: (items: ListItem[]) => void;
-  updateItem: (id: string, patch: Partial<Pick<ListItem, 'quantity' | 'level'>>) => void;
+  updateItem: (id: string, patch: Partial<Pick<ListItem, 'quantity' | 'level' | 'checked'>>) => void;
   removeItem: (id: string) => void;
   clearItems: () => void;
+  itemsBridge: ItemsBridge;
   catalog: Catalog | null;
   source: DataSource;
   origin: LatLng | null;
@@ -74,9 +92,26 @@ const Ctx = createContext<AppState | null>(null);
 export function AppStateProvider({ children }: { children: ReactNode }) {
   const [ready, setReady] = useState(false);
   const [settings, setSettings] = useState<Settings>(defaultSettings);
-  const [items, setItems] = useState<ListItem[]>([]);
+  const [items, setItemsState] = useState<ListItem[]>([]);
   const [catalog, setCatalog] = useState<Catalog | null>(null);
   const source = useMemo(() => configuredSource(), []);
+
+  // Item edits go through a ref so the shared-list sync sees each one, in order.
+  const itemsRef = useRef<ListItem[]>([]);
+  const listenerRef = useRef<((next: ListItem[], prev: ListItem[]) => void) | null>(null);
+  const itemsBridge = useMemo<ItemsBridge>(() => ({
+    current: () => itemsRef.current,
+    replace: (next) => { itemsRef.current = next; setItemsState(next); },
+    setListener: (listener) => { listenerRef.current = listener; },
+  }), []);
+  const setItems = useCallback((update: (current: ListItem[]) => ListItem[]) => {
+    const prev = itemsRef.current;
+    const next = update(prev);
+    if (next === prev) return;
+    itemsRef.current = next;
+    setItemsState(next);
+    listenerRef.current?.(next, prev);
+  }, []);
 
   useEffect(() => {
     (async () => {
@@ -85,7 +120,7 @@ export function AppStateProvider({ children }: { children: ReactNode }) {
         if (raw) {
           const saved = JSON.parse(raw) as Partial<Persisted>;
           if (saved.settings) setSettings({ ...defaultSettings(), ...saved.settings, chains: withNewChains(saved.settings.chains) });
-          if (saved.items) setItems(saved.items);
+          if (saved.items) itemsBridge.replace(saved.items);
         }
       } catch {
         // Storage unavailable (private browsing): start fresh.
@@ -93,7 +128,7 @@ export function AppStateProvider({ children }: { children: ReactNode }) {
       setReady(true);
     })();
     source.load().then(setCatalog);
-  }, [source]);
+  }, [source, itemsBridge]);
 
   useEffect(() => {
     if (!ready) return;
@@ -108,29 +143,30 @@ export function AppStateProvider({ children }: { children: ReactNode }) {
       const next = current.map((i) => ({ ...i }));
       for (const item of newItems) {
         const same = next.find((i) => (item.categoryId ? i.categoryId === item.categoryId : i.text.toLowerCase() === item.text.toLowerCase()));
-        if (same) same.quantity += item.quantity;
-        else next.push(item);
+        // Adding something already ticked off means it's needed again.
+        if (same) Object.assign(same, same.checked ? { quantity: item.quantity, checked: false } : { quantity: clampQuantity(same.quantity + item.quantity) });
+        else next.push({ ...item, quantity: clampQuantity(item.quantity) });
       }
       return next;
     });
-  }, []);
+  }, [setItems]);
 
   const addItem = useCallback((text: string, quantity = 1) => {
     if (text.trim()) addItems([makeListItem(text, quantity)]);
   }, [addItems]);
 
-  const updateItem = useCallback((id: string, patch: Partial<Pick<ListItem, 'quantity' | 'level'>>) => {
-    setItems((current) => current.map((i) => (i.id === id ? { ...i, ...patch, quantity: Math.max(1, patch.quantity ?? i.quantity) } : i)));
-  }, []);
+  const updateItem = useCallback((id: string, patch: Partial<Pick<ListItem, 'quantity' | 'level' | 'checked'>>) => {
+    setItems((current) => current.map((i) => (i.id === id ? { ...i, ...patch, quantity: clampQuantity(patch.quantity ?? i.quantity) } : i)));
+  }, [setItems]);
 
-  const removeItem = useCallback((id: string) => setItems((c) => c.filter((i) => i.id !== id)), []);
-  const clearItems = useCallback(() => setItems([]), []);
+  const removeItem = useCallback((id: string) => setItems((c) => c.filter((i) => i.id !== id)), [setItems]);
+  const clearItems = useCallback(() => setItems(() => []), [setItems]);
 
   const origin = settings.location ?? (settings.postalCode ? postalCodeLocation(settings.postalCode) : null);
   const t = useCallback((key: StringKey, vars?: Record<string, string | number>) => translate(settings.lang, key, vars), [settings.lang]);
 
   const value: AppState = {
-    ready, settings, updateSettings, items, addItem, addItems, updateItem, removeItem, clearItems,
+    ready, settings, updateSettings, items, addItem, addItems, updateItem, removeItem, clearItems, itemsBridge,
     catalog, source, origin, t,
   };
   return <Ctx.Provider value={value}>{children}</Ctx.Provider>;

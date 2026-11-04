@@ -130,7 +130,7 @@ export function Row({ children, style, gap = space.sm }: { children: ReactNode; 
   return <View style={[{ flexDirection: 'row', alignItems: 'center', gap }, style]}>{children}</View>;
 }
 
-export function Stepper({ value, onChange }: { value: number; onChange: (v: number) => void }) {
+export function Stepper({ value, onChange, max = Infinity }: { value: number; onChange: (v: number) => void; max?: number }) {
   const c = useColors();
   const btn = (label: string, next: number, a11y: string) => (
     <Pressable
@@ -146,7 +146,7 @@ export function Stepper({ value, onChange }: { value: number; onChange: (v: numb
     <Row gap={space.xs}>
       {btn('−', Math.max(1, value - 1), 'decrease')}
       <Text style={[styles.stepValue, { color: c.text }]}>{value}</Text>
-      {btn('+', value + 1, 'increase')}
+      {btn('+', Math.min(max, value + 1), 'increase')}
     </Row>
   );
 }

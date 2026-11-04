@@ -77,6 +77,8 @@ export interface ListItem {
   level: BrandLevel;
   /** Number of "default size" units wanted (e.g. 2 × 1 L of milk). */
   quantity: number;
+  /** Ticked off (already in the basket). Missing means not ticked. */
+  checked?: boolean;
 }
 
 export type MatchType = 'exact' | 'same_product_other_size' | 'own_brand_equivalent' | 'category';
