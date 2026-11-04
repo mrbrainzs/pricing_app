@@ -1,0 +1,8 @@
+[Unit]
+Description=Import grocery prices daily at 05:30 Madrid time
+[Timer]
+OnCalendar=*-*-* 05:30:00 Europe/Madrid
+Persistent=true
+Unit=quinsuper-import.service
+[Install]
+WantedBy=timers.target

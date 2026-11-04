@@ -3,6 +3,9 @@
 Status: NOT CLEARED. No lawyer has been engaged, no legal opinion obtained,
 and no trademark registry clearance search completed.
 
+Owner instruction, 4 November 2026: skip arranging this review. This document
+is retained as an optional brief, and is not a deployment approval gate.
+
 Product: Quin Súper / QuinSuper, a Barcelona grocery price comparison app.
 Repository: https://github.com/mrbrainzs/pricing_app
 Proposed domain: quinsuper.trottedmedia.com
@@ -52,5 +55,4 @@ Chain-by-chain review: pending
 Required remediation verified: pending
 Written launch approval and conditions: pending
 
-Keep the preview restricted until the owner receives and assesses the
-requested written legal review. Do not claim legal clearance in the app.
+Do not claim legal clearance in the app. No legal review has been completed.

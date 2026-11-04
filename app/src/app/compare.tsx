@@ -118,6 +118,10 @@ export default function CompareScreen() {
     });
   }, [catalog, origin, items, settings.chains, settings.maxDistanceKm, settings.minSaving]);
 
+  if (catalog && !catalog.isSample && catalog.stores.length === 0) {
+    return <Screen edges={['bottom']}><Banner text={t('storesPending')} /></Screen>;
+  }
+
   if (!result) {
     return (
       <Screen edges={['bottom']}>

@@ -2,19 +2,20 @@
  * Daily price import.
  *
  *   npm run ingest -w @pricing/ingest -- --chain mercadona --postal 08001,08012 --sink json
- *   npm run ingest -w @pricing/ingest -- --chain mercadona --sink supabase   (needs SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY)
+ *   DATABASE_PATH=/var/lib/quinsuper/prices.sqlite npm run ingest -w @pricing/ingest -- --sink sqlite
  *
  * Options:
  *   --chain        chain to import (v1: mercadona)
  *   --postal       comma-separated postal codes; each distinct pricing zone is imported once
- *   --sink         json (writes ./out) or supabase
+ *   --sink         json (writes ./out) or sqlite (local DATABASE_PATH)
  *   --details      new (default): fetch brand/EAN only for unseen products; all; none
  *   --max-categories N   stop early, for test runs
  */
 import { parseArgs } from 'node:util';
 import { PoliteClient } from './http';
 import { mercadonaWarehouse, scrapeMercadona } from './chains/mercadona';
-import { JsonSink, SupabaseSink, type Sink } from './sink';
+import { JsonSink, type Sink } from './sink';
+import { SqliteSink } from './sqliteSink';
 
 const DEFAULT_POSTAL_CODES = ['08001', '08012', '08014', '08018', '08027', '08028'];
 
@@ -31,14 +32,12 @@ async function main() {
   });
 
   let sink: Sink;
-  if (values.sink === 'supabase') {
-    const url = process.env.SUPABASE_URL;
-    const key = process.env.SUPABASE_SERVICE_ROLE_KEY;
-    if (!url || !key) throw new Error('Set SUPABASE_URL and SUPABASE_SERVICE_ROLE_KEY to write to Supabase.');
-    sink = new SupabaseSink(url, key);
-  } else {
+  if (values.sink === 'sqlite') {
+    if (!process.env.DATABASE_PATH) throw new Error('Set DATABASE_PATH to the local SQLite file.');
+    sink = new SqliteSink(process.env.DATABASE_PATH);
+  } else if (values.sink === 'json') {
     sink = new JsonSink(values.out!);
-  }
+  } else throw new Error('Unknown sink. Use json or sqlite.');
 
   if (values.chain !== 'mercadona') {
     throw new Error(`Chain "${values.chain}" has no importer yet. v1 importers: mercadona.`);

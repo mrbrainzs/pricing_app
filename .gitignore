@@ -6,3 +6,8 @@ dist/
 *.log
 web-build/
 out/
+
+build/
+*.sqlite
+*.sqlite-shm
+*.sqlite-wal

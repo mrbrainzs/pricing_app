@@ -1,106 +1,110 @@
 # QuinSuper deployment
 
-Target: https://quinsuper.trottedmedia.com on 204.168.165.248.
-Deployment branch: claude/cabas-scaffold (current repository default).
-Workflow: .github/workflows/deploy.yml.
+URL: https://quinsuper.trottedmedia.com
+Server: 204.168.165.248 (Ubuntu, existing Nginx)
+Source branch: `claude/cabas-scaffold` (repository default)
+Build branch: `deploy/quinsuper` (generated files only; do not edit)
 
-## Current status
+## Deployment pipeline
 
-The workflow has been committed. Server provisioning, TLS, SSH credentials,
-Supabase setup and end-to-end verification have NOT been completed.
-The app currently uses sample data; adding import secrets alone does not connect
-the app to real prices.
+`.github/workflows/deploy.yml` runs on each push to the source branch, or manually
+from GitHub Actions. It installs the locked dependencies, runs tests, TypeScript
+checks and Expo lint, builds the web app and bundles the Node API/importer.
+Only after all checks pass does it publish the build branch using GitHub's
+built-in `GITHUB_TOKEN`. No repository secrets or server SSH keys are required.
+The public repository must remain readable by the server for this mechanism.
 
-## Server preparation
+`quinsuper-update.timer` checks the build branch every minute. A new release
+is extracted into `/var/www/quinsuper/releases/<build-commit>`, the `current`
+symlink switches atomically, and the API restarts. A failed API health check
+rolls back to the previous release. Updates wait while the importer runs.
+Existing releases are retained for rollback; monitor disk space.
+Server service definitions are managed separately in `deploy/`; changes to them
+require an administrator to install them and reload systemd.
 
-Inspect the existing OS, web server, virtual hosts, firewall and free space first.
-Do not replace existing configurations or install a competing web server.
-For a Debian/Ubuntu host already using Nginx, provision a dedicated deployment
-account and directories:
+## Local database and API
 
-```sh
-adduser --disabled-password --gecos '' quinsuper
-install -d -o quinsuper -g quinsuper -m 755 /var/www/quinsuper
-install -d -o quinsuper -g quinsuper -m 755 /var/www/quinsuper/releases /var/www/quinsuper/incoming
-install -d -o quinsuper -g quinsuper -m 700 /home/quinsuper/.ssh
+Production uses **SQLite**, not Supabase. The persistent file is
+`/var/lib/quinsuper/prices.sqlite`, outside all release and web directories.
+The schema is initialized idempotently in `ingest/src/database.ts`, with a
+migration-version record. It covers chains, categories, verified stores,
+products, size changes and an append-only price-observation log. WAL mode
+allows imports alongside API reads; each save is transactional and repeated
+observations are deduplicated.
+
+The original `supabase/migrations/` file is an unused reference for a future
+account/shared-list implementation. It is not applied to SQLite. User lists
+and preferences stay in device/browser local storage; there is no server
+account, shared-list, real-time-sync or alerts service in this release.
+`SUPABASE_URL` and `SUPABASE_SERVICE_ROLE_KEY` are not used or needed.
+No Supabase project or cloud data was provided to migrate.
+
+The API runs as `www-data` on loopback `127.0.0.1:3007`, behind Nginx:
+
+- `GET /api/health`: service/database status, source release and import timestamp.
+- `GET /api/catalog`: imported products and freshest prices from the last seven days.
+- `GET /api/history/<product-id>`: up to 90 days in a single pricing zone.
+
+There are no network write endpoints. SQLite files are never served by Nginx.
+The web build uses `EXPO_PUBLIC_API_URL=/api`. A native build needs an absolute
+HTTPS API URL and an appropriate CORS policy if used in another web origin.
+Without recent imported data, the app falls back to explicitly labelled sample
+data; samples are never mixed with imported prices or real store locations.
+
+## Daily import and backups
+
+`quinsuper-import.timer` runs the local importer at **05:30 Europe/Madrid**,
+including daylight-saving changes. It survives reboot and catches missed runs.
+Mercadona is the only implemented chain. The old Supabase GitHub import
+workflow was replaced with this local timer so SQLite stays on the server.
+A request timeout, retry/backoff and sequential request delay are configured.
+Unverified postal-code zones cause failure instead of silently assigning a zone.
+
+The repository contains no verified physical store locations. Product search
+and history work with imported prices; basket comparison explains this missing
+store coverage. Other chain importers and a verified store-location feed remain
+separate product milestones.
+
+`quinsuper-backup.timer` creates and integrity-checks an online SQLite backup
+at **04:30 Europe/Madrid**, including committed WAL data, retaining 14 days
+under `/var/backups/quinsuper`. These are on-host backups; off-host recovery
+is not configured. Database and backups are private to service/root users.
+
+## Operations
+
+```bash
+systemctl status quinsuper-api
+systemctl list-timers 'quinsuper-*'
+journalctl -u quinsuper-update -u quinsuper-import --since today
+curl -fsS https://quinsuper.trottedmedia.com/api/health
+systemctl start quinsuper-update.service
+systemctl start quinsuper-import.service
+systemctl start quinsuper-backup.service
 ```
 
-Generate a dedicated Ed25519 key for GitHub Actions; install only its public key
-in /home/quinsuper/.ssh/authorized_keys (owner quinsuper, mode 600).
-Use the authorized_keys options restrict,command if a reviewed forced-command
-deployment wrapper is introduced; otherwise use restrict to disable forwarding
-and PTY while allowing the workflow's shell/scp operations.
-Do not upload the personal root key or .ppk file to the repository.
+For a bounded import (avoid running concurrently with the service):
 
-GitHub Actions secrets:
-- QUINSUPER_DEPLOY_KEY: dedicated OpenSSH private key, not PuTTY PPK.
-- QUINSUPER_KNOWN_HOSTS: verified SSH host-key entry for 204.168.165.248.
-Verify the fingerprint through a trusted server console before accepting it.
-Never disable SSH host-key verification.
-
-The deployment user needs no sudo. Each deployment uploads a release and
-atomically switches /var/www/quinsuper/current. Old releases are retained for
-manual rollback; monitor disk usage and establish a retention policy.
-
-## Web server and TLS
-
-Create a separate virtual host with this core configuration, adapted to the
-existing server. Validate with nginx -t before reloading.
-
-```nginx
-server {
-    listen 80;
-    server_name quinsuper.trottedmedia.com;
-    root /var/www/quinsuper/current;
-    index index.html;
-
-    # Keep preview restricted until the requested legal review is completed.
-    auth_basic "QuinSuper preview";
-    auth_basic_user_file /etc/nginx/quinsuper.htpasswd;
-
-    location / {
-        try_files $uri $uri/ /index.html;
-    }
-
-    location = /index.html {
-        add_header Cache-Control "no-cache";
-    }
-
-    location ~ /\. {
-        deny all;
-    }
-}
+```bash
+cd /var/www/quinsuper/current
+sudo -u www-data env DATABASE_PATH=/var/lib/quinsuper/prices.sqlite \
+  /opt/quinsuper-node/bin/node server/ingest.mjs --sink sqlite \
+  --chain mercadona --postal 08012 --details none --max-categories 3
 ```
 
-Create the preview password file securely using htpasswd; never commit it.
-Provision a valid certificate using the server's existing ACME tooling; use
-DNS validation or an explicitly accessible ACME challenge location when HTTP
-authentication is enabled. Redirect HTTP to HTTPS once TLS works.
+For initial provisioning, inspect the host, copy `deploy/` and run
+`bash deploy/provision.sh` as root. It adds a separate Nginx vhost, verifies
+the Node 22 download checksum and obtains a Let's Encrypt certificate.
+It does not replace the existing site's configuration. After a tested build
+exists, run the updater and enable the update/import/backup timers.
+Certificate renewal uses the existing Certbot scheduler and an Nginx reload hook.
 
-The workflow's HTTPS check expects HTTP 200. While preview authentication is
-enabled, change that check to assert the expected 401 response or configure
-a narrowly scoped health endpoint returning 200 without exposing the app.
-Do not remove preview protection solely to satisfy a health check.
+Rollback switches `/var/www/quinsuper/current` to a retained release and restarts
+`quinsuper-api.service`. Stop the update timer while investigating a rollback,
+otherwise it will reactivate the latest build. Code rollback does not roll back
+the persistent database. Review schema changes for backward compatibility.
 
-## Supabase
+## Legal review
 
-Create a project in the owner's Supabase organization and apply
-supabase/migrations/20261104000000_init.sql after review. Configure auth
-providers required by the features actually being released.
-
-Add SUPABASE_URL and SUPABASE_SERVICE_ROLE_KEY as GitHub Actions secrets
-for the existing Daily prices workflow. The service-role key is server-only:
-never prefix it EXPO_PUBLIC_, embed it in the web build, or log it.
-
-Before enabling imports, verify the chain-specific collection permissions
-and obtain the requested legal advice. Run a bounded manual import, inspect
-the stored rows and timestamps, then verify the daily schedule.
-
-A separate app data-source implementation is still required to display the
-stored prices. Add Bonpreu/Esclat, Caprabo, bonÀrea, DIA and Alcampo importers
-as separate reviewed changes.
-
-## Launch prerequisites
-
-Complete docs/prelaunch-review.md and verify HTTPS, deep links, authentication,
-real data behaviour, scheduled imports and rollback before public launch.
+The owner asked to skip arranging the lawyer review on 4 November 2026.
+No Spanish IP legal opinion or trademark clearance has been obtained.
+The optional review brief remains in `docs/prelaunch-review.md`.

@@ -1,0 +1,18 @@
+[Unit]
+Description=QuinSuper daily Mercadona import into local SQLite
+After=network-online.target
+
+[Service]
+Type=oneshot
+User=www-data
+Group=www-data
+WorkingDirectory=/var/www/quinsuper/current
+Environment=DATABASE_PATH=/var/lib/quinsuper/prices.sqlite
+ExecStart=/opt/quinsuper-node/bin/node server/ingest.mjs --chain mercadona --sink sqlite
+TimeoutStartSec=2h
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectSystem=strict
+ProtectHome=true
+ReadWritePaths=/var/lib/quinsuper
+UMask=0077

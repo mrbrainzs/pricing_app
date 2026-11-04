@@ -1,0 +1,8 @@
+[Unit]
+Description=Activate tested QuinSuper build from GitHub
+After=network-online.target
+[Service]
+Type=oneshot
+ExecStart=/usr/local/sbin/quinsuper-update
+TimeoutStartSec=5min
+UMask=0022

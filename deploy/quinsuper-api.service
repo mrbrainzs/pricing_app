@@ -1,0 +1,23 @@
+[Unit]
+Description=QuinSuper local catalogue API
+After=network.target
+
+[Service]
+User=www-data
+Group=www-data
+WorkingDirectory=/var/www/quinsuper/current
+Environment=DATABASE_PATH=/var/lib/quinsuper/prices.sqlite
+Environment=PORT=3007
+EnvironmentFile=/var/www/quinsuper/current/release.env
+ExecStart=/opt/quinsuper-node/bin/node server/server.mjs
+Restart=on-failure
+RestartSec=5
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectSystem=strict
+ProtectHome=true
+ReadWritePaths=/var/lib/quinsuper
+UMask=0077
+
+[Install]
+WantedBy=multi-user.target

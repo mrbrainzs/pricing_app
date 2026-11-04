@@ -13,7 +13,7 @@
 - **Product search (F2)** in any of the three languages, plus a **product page (F5)**: price per chain, unit prices, own-brand equivalents, good / normal / high price label, 90-day history (F6).
 - **Freshness labels (F8)** on every price: source and time. Prices older than 3 days are flagged; older than 7 days are dropped.
 
-The app currently runs on **sample prices**, clearly labelled in the app. Real prices arrive once the daily import writes to Supabase (below).
+The deployed app reads real prices from a **local SQLite database** through a read-only API. The daily importer runs on the same server. When no recent prices are available, explicitly labelled sample data is shown instead. Mercadona is the only implemented importer; basket comparison needs verified physical store locations, which have not yet been added.
 
 ## Repository layout
 
@@ -21,9 +21,9 @@ The app currently runs on **sample prices**, clearly labelled in the app. Real p
 packages/core   Shared logic (TypeScript, no UI): item catalogue in ca/es/en, list parsing,
                 product classification, matching rules, basket comparison, freshness rules,
                 price labels, sample data. Fully unit-tested.
-ingest          Daily price importer (Mercadona first) -> JSON files or Supabase.
-supabase        Database schema: catalogue, append-only price log, lists with row-level
-                security, anonymous sign-in, invite links, real-time sync, alerts.
+ingest          Daily price importer -> JSON or local SQLite, and read-only HTTP API.
+deploy          Ubuntu/Nginx, systemd services, daily imports, backups, deployment updater.
+supabase        Unused original schema reference for future account/shared-list features.
 app             Expo app (iOS, Android, web) using Expo Router.
 docs            Product review and decisions.
 ```
@@ -54,15 +54,22 @@ npm run ingest -w @pricing/ingest -- --chain mercadona --postal 08012 --max-cate
 
 ## Going live with real prices
 
-1. Create a Supabase project and run `supabase/migrations/20261104000000_init.sql`. Enable **anonymous sign-ins**, plus the Apple and Google providers for shared lists.
-2. In the GitHub repo, add the secrets `SUPABASE_URL` and `SUPABASE_SERVICE_ROLE_KEY`.
-3. The **Daily prices** workflow (`.github/workflows/daily-prices.yml`) then runs every morning before 07:00 Barcelona time. You can also run it by hand from the Actions tab. Start it **now**: the good / normal / high price label needs at least 30 days of history.
-4. Connect the app to Supabase (next milestone: a Supabase data source next to `app/src/data/source.ts`).
+Production: https://quinsuper.trottedmedia.com. See [docs/deployment.md](docs/deployment.md) for the full setup and operations guide.
 
-Before launch: get the Spanish IP lawyer review (EU database right, each chain's terms, Catalan consumer-language rules), and run a trademark search on the final name.
+Pushes to the repository's default branch (`claude/cabas-scaffold`) run tests, type checks, lint and builds in GitHub Actions. The server picks up a passing release within about a minute. No deployment keys or Supabase secrets are needed.
+
+The server imports prices at **05:30 Europe/Madrid** into `/var/lib/quinsuper/prices.sqlite` and backs up the database daily. For a local SQLite import:
+
+```bash
+DATABASE_PATH="$PWD/prices.sqlite" npm run ingest -w @pricing/ingest -- --sink sqlite --postal 08012 --max-categories 3
+```
+
+The good / normal / high label needs at least 30 days of price history. Lists and preferences stay on the device; shared lists and accounts are not implemented.
+
+The owner asked to skip arranging the Spanish IP lawyer review on 4 November 2026. No legal opinion or trademark clearance has been obtained; the optional brief remains in `docs/prelaunch-review.md`.
 
 ## Next milestones
 
-- Supabase data source in the app, and importers for Bonpreu/Esclat, Caprabo, bonÀrea, DIA and Alcampo
+- Verified store locations, and importers for Bonpreu/Esclat, Caprabo, bonÀrea, DIA and Alcampo
 - Price alerts with push notifications (F7), barcode scanner (F9), shared lists (F10), share card (F11), weekly basket index (F12)
 - v1.1: receipt scanner (UC5), opening hours, flatmate cost splitting

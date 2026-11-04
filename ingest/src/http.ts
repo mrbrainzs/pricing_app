@@ -23,6 +23,7 @@ export class PoliteClient {
       try {
         const res = await fetch(url, {
           ...init,
+          signal: init.signal ?? AbortSignal.timeout(30000),
           headers: { 'user-agent': this.opts.userAgent ?? DEFAULT_USER_AGENT, accept: 'application/json', ...init.headers },
         });
         if (res.ok) return res;

@@ -119,16 +119,14 @@ export function parseMercadonaPrice(p: MercadonaProductSummary, zone: string, ob
 
 /** Warehouse serving a postal code, from the header Mercadona sets when the postal code changes. */
 export async function mercadonaWarehouse(http: PoliteClient, postalCode: string): Promise<string> {
-  try {
-    const res = await http.request(`${MERCADONA_API}/postal-codes/actions/change-pc/`, {
-      method: 'PUT',
-      headers: { 'content-type': 'application/json' },
-      body: JSON.stringify({ new_postal_code: postalCode }),
-    });
-    return res.headers.get('x-customer-wh') ?? DEFAULT_WAREHOUSE;
-  } catch {
-    return DEFAULT_WAREHOUSE;
-  }
+  const res = await http.request(`${MERCADONA_API}/postal-codes/actions/change-pc/`, {
+    method: 'PUT',
+    headers: { 'content-type': 'application/json' },
+    body: JSON.stringify({ new_postal_code: postalCode }),
+  });
+  const warehouse = res.headers.get('x-customer-wh');
+  if (!warehouse || !/^[a-z0-9_-]+$/i.test(warehouse)) throw new Error(`No verified pricing zone for ${postalCode}`);
+  return warehouse;
 }
 
 export interface MercadonaOptions {

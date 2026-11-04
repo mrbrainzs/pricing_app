@@ -12,7 +12,7 @@ import {
 } from '@pricing/core';
 import { createContext, useCallback, useContext, useEffect, useMemo, useState, type ReactNode } from 'react';
 
-import { sampleSource, type Catalog, type DataSource } from '@/data/source';
+import { configuredSource, type Catalog, type DataSource } from '@/data/source';
 import { deviceLanguage, translate, type StringKey } from '@/i18n';
 
 export interface Settings {
@@ -66,7 +66,7 @@ export function AppStateProvider({ children }: { children: ReactNode }) {
   const [settings, setSettings] = useState<Settings>(defaultSettings);
   const [items, setItems] = useState<ListItem[]>([]);
   const [catalog, setCatalog] = useState<Catalog | null>(null);
-  const source = useMemo(() => sampleSource(), []);
+  const source = useMemo(() => configuredSource(), []);
 
   useEffect(() => {
     (async () => {

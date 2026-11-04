@@ -1,0 +1,6 @@
+[Unit]
+Description=Back up the local QuinSuper database
+[Service]
+Type=oneshot
+ExecStart=/usr/bin/python3 /usr/local/lib/quinsuper/backup.py
+UMask=0077

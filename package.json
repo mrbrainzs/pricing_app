@@ -1,9 +1,17 @@
 {
   "name": "pricing-app",
   "private": true,
-  "workspaces": ["packages/*", "ingest", "app"],
+  "workspaces": [
+    "packages/*",
+    "ingest",
+    "app"
+  ],
   "scripts": {
     "test": "npm run test --workspaces --if-present",
-    "typecheck": "npm run typecheck --workspaces --if-present"
+    "typecheck": "npm run typecheck --workspaces --if-present",
+    "build:server": "node scripts/build-server.mjs"
+  },
+  "devDependencies": {
+    "esbuild": "^0.25.12"
   }
 }

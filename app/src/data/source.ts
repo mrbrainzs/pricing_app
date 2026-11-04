@@ -16,8 +16,7 @@ export interface DataSource {
 }
 
 /**
- * Sample data: invented prices for six chains in Barcelona, used until the Supabase source
- * is configured (EXPO_PUBLIC_SUPABASE_URL). Everything it returns is labelled as sample.
+ * Invented prices, always labelled as sample. Never merged into the real catalogue.
  */
 export function sampleSource(now = new Date()): DataSource {
   const data = buildSampleData(now);
@@ -29,4 +28,36 @@ export function sampleSource(now = new Date()): DataSource {
       return data.history(productId);
     },
   };
+}
+
+/** The same-origin read-only API uses SQLite on the Ubuntu server. */
+export function apiSource(baseUrl: string): DataSource {
+  const base = baseUrl.replace(/\/$/, '');
+  const sample = sampleSource();
+  let usingSample = false;
+  const get = async <T,>(path: string): Promise<T> => {
+    const response = await fetch(`${base}${path}`, { signal: AbortSignal.timeout(15000) });
+    if (!response.ok) throw new Error(`Catalogue API returned ${response.status}`);
+    return response.json() as Promise<T>;
+  };
+  return {
+    async load() {
+      try {
+        const data = await get<Catalog>('/catalog');
+        if (data.products.length && data.prices.length) { usingSample = false; return data; }
+      } catch { /* Keep the preview usable with explicitly labelled sample data. */ }
+      usingSample = true;
+      return sample.load();
+    },
+    async history(productId) {
+      if (usingSample) return sample.history(productId);
+      try { return await get<PricePoint[]>(`/history/${encodeURIComponent(productId)}`); }
+      catch { return []; }
+    },
+  };
+}
+
+export function configuredSource(): DataSource {
+  const url = process.env.EXPO_PUBLIC_API_URL;
+  return url ? apiSource(url) : sampleSource();
 }
