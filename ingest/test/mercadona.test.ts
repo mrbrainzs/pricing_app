@@ -57,6 +57,18 @@ describe('Mercadona parsing', () => {
     const p = parseMercadonaProduct(eggs, 'Huevos', { id: '31030', ean: '8480000310300', brand: 'Hacendado', display_name: 'Huevos grandes L' });
     expect(p).toMatchObject({ ean: '8480000310300', brand: 'Hacendado', isOwnBrand: true });
   });
+
+  it('converts a per-capsule reference price to the pack weight basis used by the UI', () => {
+    // Recorded fields from product 86348, 4 November 2026.
+    const capsules: MercadonaProductSummary = {
+      id: '86348', display_name: 'Café con leche en cápsula Hacendado',
+      price_instructions: {
+        unit_price: '3.25', bulk_price: '0.20', reference_price: '0.204', reference_format: 'ud',
+        unit_size: 0.1536, size_format: 'kg', total_units: 16,
+      },
+    };
+    expect(parseMercadonaPrice(capsules, 'bcn1', '2026-11-04T19:30:00Z')?.unitPrice).toBeCloseTo(21.1589, 4);
+  });
 });
 
 describe('Mercadona scrape', () => {

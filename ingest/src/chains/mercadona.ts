@@ -99,9 +99,11 @@ export function parseMercadonaPrice(p: MercadonaProductSummary, zone: string, ob
   const price = num(pi.unit_price);
   if (!price) return null;
   const refUnit = pi.reference_format ? REFERENCE_UNIT[pi.reference_format.trim().toLowerCase()] : undefined;
-  let unitPrice = refUnit ? num(pi.reference_price) ?? num(pi.bulk_price) : null;
+  const size = mercadonaSize(p);
+  // The app labels unit prices with the product's size unit. Some retailers quote
+  // per capsule while describing the pack in kg; those bases cannot be interchanged.
+  let unitPrice = refUnit && (!size || refUnit === size.unit) ? num(pi.reference_price) ?? num(pi.bulk_price) : null;
   if (unitPrice === null) {
-    const size = mercadonaSize(p);
     unitPrice = size ? round(price / size.amount, 4) : null;
   }
   const previous = num(pi.previous_unit_price);
