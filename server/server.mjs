@@ -196,7 +196,7 @@ var CATEGORIES = [
     defaultSize: kg(1),
     names: { ca: "Sucre", es: "Az\xFAcar", en: "Sugar" },
     synonyms: ["sucre blanc", "azucar blanco", "white sugar"],
-    include: ["azucar", "sucre"],
+    include: ["azucar$", "sucre$"],
     exclude: ["sin azucar", "sense sucre", "glass", "galleta", "cacao", "chocolate", "mermelada", "bebida", "refresco", "cereal", "caramelo", "chicle", "xocolata", "beguda", "edulcorante"]
   },
   {
@@ -294,7 +294,7 @@ var CATEGORIES = [
     names: { ca: "Taronges", es: "Naranjas", en: "Oranges" },
     synonyms: ["taronja", "naranja", "orange"],
     include: ["naranja", "taronja", "taronges"],
-    exclude: ["zumo", "mermelada", "bebida", "refresco", "sabor", "piel", "chocolate", "naranjada", "suc", "melmelada", "gajos en almibar"]
+    exclude: ["mermelada", "bebida", "refresco", "sabor", "piel", "chocolate", "naranjada", "melmelada", "gajos en almibar"]
   },
   {
     id: "potatoes",

@@ -145,6 +145,165 @@ function isOwnBrand(chain, brand) {
   return CHAINS[chain].ownBrands.some((own) => own.toLowerCase() === b);
 }
 
+// packages/core/src/brands.ts
+var KNOWN_BRANDS = [
+  "Central Lechera Asturiana",
+  "Asturiana",
+  "Pascual",
+  "ATO",
+  "Puleva",
+  "Kaiku",
+  "Covap",
+  "Llet Nostra",
+  "Lauki",
+  "Celta",
+  "Feiraco",
+  "Danone",
+  "Activia",
+  "Danet",
+  "Oikos",
+  "Yoplait",
+  "La Fageda",
+  "Nestl\xE9",
+  "La Lechera",
+  "Nesquik",
+  "Nescaf\xE9",
+  "Nidina",
+  "Pr\xE9sident",
+  "Garc\xEDa Baquero",
+  "El Caser\xEDo",
+  "Philadelphia",
+  "Babybel",
+  "Kerrygold",
+  "Flora",
+  "Tulip\xE1n",
+  "Carbonell",
+  "Koipe",
+  "Koipesol",
+  "La Espa\xF1ola",
+  "Borges",
+  "Hojiblanca",
+  "Ybarra",
+  "Coosur",
+  "Oleoestepa",
+  "SOS",
+  "Brillante",
+  "La Fallera",
+  "Nomen",
+  "Gallo",
+  "Barilla",
+  "Garofalo",
+  "Buitoni",
+  "Rummo",
+  "Bimbo",
+  "Panrico",
+  "Recondo",
+  "Calvo",
+  "Isabel",
+  "Albo",
+  "Cuca",
+  "Rianxeira",
+  "Orlando",
+  "Sol\xEDs",
+  "Hida",
+  "Apis",
+  "Luengo",
+  "Cidacos",
+  "Litoral",
+  "Gallina Blanca",
+  "Knorr",
+  "Starlux",
+  "ElPozo",
+  "El Pozo",
+  "Campofr\xEDo",
+  "Navidul",
+  "Casa Tarradellas",
+  "Noel",
+  "Oscar Mayer",
+  "Argal",
+  "Marcilla",
+  "Saimaza",
+  "Bonka",
+  "Lavazza",
+  "Dolce Gusto",
+  "Starbucks",
+  "Tassimo",
+  "Cola Cao",
+  "Azucarera",
+  "Acor",
+  "Font Vella",
+  "Bezoya",
+  "Lanjar\xF3n",
+  "Aquabona",
+  "Sol\xE1n de Cabras",
+  "Viladrau",
+  "Vichy Catalan",
+  "Estrella Damm",
+  "Damm",
+  "Moritz",
+  "Mahou",
+  "San Miguel",
+  "Heineken",
+  "Alhambra",
+  "Amstel",
+  "Cruzcampo",
+  "Voll-Damm",
+  "Don Sim\xF3n",
+  "Granini",
+  "Zumosol",
+  "Juver",
+  "Coca-Cola",
+  "Fanta",
+  "Pepsi",
+  "Schweppes",
+  "Aquarius",
+  "Scottex",
+  "Colhogar",
+  "Renova",
+  "Foxy",
+  "Ariel",
+  "Skip",
+  "Wipp",
+  "Dixan",
+  "Colon",
+  "Norit",
+  "Fairy",
+  "Mistol",
+  "Finish",
+  "Pantene",
+  "H&S",
+  "Head & Shoulders",
+  "Elvive",
+  "Garnier",
+  "Fructis",
+  "Herbal Essences",
+  "Johnson",
+  "Nivea",
+  "Dove",
+  "Sanex",
+  "Colgate",
+  "Signal",
+  "Sensodyne",
+  "Oral-B",
+  "Licor del Polo",
+  "Kinder",
+  "Milka",
+  "Valor",
+  "Torras",
+  "Lindt",
+  "Chupa Chups",
+  "La Menorquina",
+  "Frigo",
+  "H\xE4agen-Dazs",
+  "Puleva Peques"
+];
+var compiled = null;
+function detectBrand(name) {
+  compiled ??= [...KNOWN_BRANDS].sort((a, b) => b.length - a.length).map((brand) => ({ brand, re: new RegExp(`(?:^| )${normalize(brand).replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}(?= |$)`) }));
+  const n = normalize(name);
+  return compiled.find((b) => b.re.test(n))?.brand;
+}
+
 // packages/core/src/categories.ts
 var kg = (amount) => ({ amount, unit: "kg" });
 var l = (amount) => ({ amount, unit: "l" });
@@ -265,7 +424,7 @@ var CATEGORIES = [
     defaultSize: kg(1),
     names: { ca: "Sucre", es: "Az\xFAcar", en: "Sugar" },
     synonyms: ["sucre blanc", "azucar blanco", "white sugar"],
-    include: ["azucar", "sucre"],
+    include: ["azucar$", "sucre$"],
     exclude: ["sin azucar", "sense sucre", "glass", "galleta", "cacao", "chocolate", "mermelada", "bebida", "refresco", "cereal", "caramelo", "chicle", "xocolata", "beguda", "edulcorante"]
   },
   {
@@ -363,7 +522,7 @@ var CATEGORIES = [
     names: { ca: "Taronges", es: "Naranjas", en: "Oranges" },
     synonyms: ["taronja", "naranja", "orange"],
     include: ["naranja", "taronja", "taronges"],
-    exclude: ["zumo", "mermelada", "bebida", "refresco", "sabor", "piel", "chocolate", "naranjada", "suc", "melmelada", "gajos en almibar"]
+    exclude: ["mermelada", "bebida", "refresco", "sabor", "piel", "chocolate", "naranjada", "melmelada", "gajos en almibar"]
   },
   {
     id: "potatoes",
@@ -515,24 +674,56 @@ var CATEGORIES = [
   }
 ];
 var CATEGORY_BY_ID = Object.fromEntries(CATEGORIES.map((c) => [c.id, c]));
-function phraseRegex(phrase) {
+function phraseRegex(phrase, position) {
   const whole = phrase.endsWith("$");
   const p = normalize(whole ? phrase.slice(0, -1) : phrase).replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
-  return new RegExp(`(?:^| )${p}${whole ? "(?= |$)" : ""}`);
+  const prefix = position === "first" ? "^" : position === "start" ? "^(?:[^ ]+ )?" : "(?:^| )";
+  return new RegExp(`${prefix}${p}${whole ? "(?= |$)" : ""}`);
 }
-var compiled = null;
+var NOT_GROCERIES = [
+  "semilla",
+  "llavor",
+  "mascota",
+  "pienso",
+  "comedero",
+  "gato$",
+  "gatos$",
+  "gat$",
+  "perro$",
+  "perros$",
+  "gos$",
+  "aftersun",
+  "solar$",
+  "sun$",
+  "spf",
+  "corporal",
+  "body milk",
+  "desmaquillante",
+  "juguete",
+  "maceta",
+  "leche de continuacion",
+  "leche continuacion",
+  "leche inicio",
+  "leche de inicio",
+  "llet de continuacio"
+];
+var compiled2 = null;
+var notGroceries = null;
 function rules() {
-  compiled ??= CATEGORIES.map((c) => ({
+  compiled2 ??= CATEGORIES.map((c) => ({
     id: c.id,
-    include: c.include.map(phraseRegex),
-    exclude: (c.exclude ?? []).map(phraseRegex)
+    // Fresh produce names start with the product ("Naranjas de mesa"); "Rondo naranja" is a pastry.
+    include: c.include.map((ph) => phraseRegex(ph, c.group === "produce" ? "first" : "start")),
+    exclude: (c.exclude ?? []).map((ph) => phraseRegex(ph, "anywhere"))
   }));
-  return compiled;
+  return compiled2;
 }
 function classifyProduct(name, brand) {
   let n = normalize(name);
   const b = brand ? normalize(brand) : "";
   if (b && b.length >= 3) n = ` ${n} `.replace(` ${b} `, " ").trim();
+  notGroceries ??= NOT_GROCERIES.map((ph) => phraseRegex(ph, "anywhere"));
+  if (notGroceries.some((re) => re.test(n))) return null;
   for (const r of rules()) {
     if (r.include.some((re) => re.test(n)) && !r.exclude.some((re) => re.test(n))) return r.id;
   }
@@ -614,6 +805,120 @@ function nearestPostalCode(pos) {
   return best;
 }
 
+// ingest/src/chains/terms.ts
+function genericSearchTerms(lang = "es") {
+  return [...new Set(CATEGORIES.map((c) => c.names[lang].toLowerCase()))];
+}
+
+// ingest/src/chains/bonarea.ts
+var BONAREA_SEARCH = "https://www.bonarea-online.com/es/shop/find";
+var BONAREA_ZONE = "cat";
+var CARD = 'class="block-product block-product-shopping none"';
+var ENTITIES = { amp: "&", quot: '"', apos: "'", lt: "<", gt: ">", nbsp: " " };
+function decodeHtml(text) {
+  return text.replace(/&#x([0-9a-f]+);/gi, (_, h) => String.fromCodePoint(parseInt(h, 16))).replace(/&#(\d+);/g, (_, d) => String.fromCodePoint(Number(d))).replace(/&([a-z]+);/gi, (m, e) => ENTITIES[e.toLowerCase()] ?? m);
+}
+function euro(text) {
+  const clean = text.includes(",") ? text.replace(/\./g, "").replace(",", ".") : text;
+  const n = Number(clean);
+  return Number.isFinite(n) && n > 0 ? n : null;
+}
+function parseBonareaPage(html) {
+  const out = [];
+  for (const chunk of html.split(CARD).slice(1)) {
+    const c = chunk.slice(0, 4e3);
+    const code = c.match(/data-identifier=["']?([0-9]{2}\*[0-9]+)/)?.[1];
+    const name = c.match(/<div class=["']?text["']?><p>([^<]+)/)?.[1];
+    if (!code || !name) continue;
+    const price = c.match(/<div class=["']?price["']?>\s*<span>\s*([\d.,]+)\s*€\/u\.?\s*<\/span>/);
+    const unit = c.match(/<div class=["']?price["']?>[\s\S]*?<\/span>\s*\(\s*([\d.,]+)\s*€\/(kg|l|ml|u)\.?\s*\)/);
+    const unitValue = unit ? euro(unit[1]) : null;
+    out.push({
+      code,
+      url: c.match(/data-friendly=["']?(https:\/\/[^\s"'>]+)/)?.[1],
+      imageUrl: c.match(/data-src=["']?(https:\/\/[^\s"'>]+)/)?.[1]?.replace(/&amp;/g, "&"),
+      name: decodeHtml(name).replace(/\s+/g, " ").trim(),
+      weight: c.match(/<div class=["']?weight["']?>([^<]*)<\/div>/)?.[1]?.trim() || void 0,
+      price: price ? euro(price[1]) : null,
+      unitPrice: unit && unitValue ? { value: unitValue, unit: unit[2] } : null,
+      outOfStock: c.includes("block-no-stock")
+    });
+  }
+  return out;
+}
+function bonareaSize(card) {
+  const weight = card.weight?.replace(/^aprox\.?\s*/i, "").replace(/^pack\s+/i, "");
+  const m = weight?.match(/^([\d.,]+)\s*([a-z]+)\.?$/i);
+  if (m) {
+    const amount = Number(m[1].includes(",") ? m[1].replace(/\./g, "").replace(",", ".") : m[1]);
+    const size = toSize(amount, m[2]);
+    if (size) return size;
+  }
+  return parseSize(card.name);
+}
+function isBonareaOwnBrand(code) {
+  return /^\d{2}\*\d{4}$/.test(code);
+}
+var UNIT_BASE = { kg: "kg", l: "l", u: "unit" };
+var MAX_PRICE = 300;
+function cardToProduct(card) {
+  const known = detectBrand(card.name);
+  const own = !known && isBonareaOwnBrand(card.code);
+  return {
+    chain: "bonarea",
+    chainProductId: card.code,
+    name: card.name,
+    brand: known ?? (own ? "bon\xC0rea" : void 0),
+    isOwnBrand: own,
+    categoryId: classifyProduct(card.name, known),
+    size: bonareaSize(card),
+    imageUrl: card.imageUrl
+  };
+}
+function cardToPrice(card, size, observedAt) {
+  if (card.outOfStock || !card.price || card.price > MAX_PRICE) return null;
+  const base = card.unitPrice ? UNIT_BASE[card.unitPrice.unit] : void 0;
+  let unitPrice = null;
+  if (card.unitPrice && base && (!size || size.unit === base)) unitPrice = card.unitPrice.value;
+  else if (size) unitPrice = round(card.price / size.amount, 4);
+  return {
+    chain: "bonarea",
+    chainProductId: card.code,
+    zone: BONAREA_ZONE,
+    price: card.price,
+    unitPrice,
+    observedAt,
+    source: "online"
+  };
+}
+async function scrapeBonarea(http, opts = {}) {
+  const observedAt = (opts.now ?? /* @__PURE__ */ new Date()).toISOString();
+  const log = opts.log ?? (() => {
+  });
+  const products = /* @__PURE__ */ new Map();
+  const prices2 = /* @__PURE__ */ new Map();
+  let emptyPages = 0;
+  for (const term of opts.terms ?? genericSearchTerms("es")) {
+    const res = await http.request(`${BONAREA_SEARCH}?${new URLSearchParams({ searchWords: term })}`, {
+      headers: { accept: "text/html,application/xhtml+xml", "accept-language": "es-ES,es;q=0.9,ca;q=0.8" }
+    });
+    const cards = parseBonareaPage(await res.text());
+    if (cards.length === 0) emptyPages++;
+    for (const card of cards) {
+      if (products.has(card.code)) continue;
+      const product = cardToProduct(card);
+      if (!product.categoryId || !product.size) continue;
+      const price = cardToPrice(card, product.size, observedAt);
+      if (!price) continue;
+      products.set(card.code, product);
+      prices2.set(card.code, price);
+    }
+    log(`"${term}": ${cards.length} cards, ${products.size} products kept so far`);
+  }
+  if (emptyPages > 0) log(`${emptyPages} searches returned no product cards`);
+  return { products: [...products.values()], prices: [...prices2.values()] };
+}
+
 // ingest/src/chains/consum.ts
 var CONSUM_API = "https://tienda.consum.es/api/rest/V1.0/catalog/product";
 var CONSUM_ZONE = "cat";
@@ -668,10 +973,10 @@ function parseConsumProduct(item) {
     imageUrl: item.productData?.imageURL ?? void 0
   };
 }
-var MAX_PRICE = 300;
+var MAX_PRICE2 = 300;
 function parseConsumPrice(item, size, observedAt) {
   const { price, unitAmount, offer } = prices(item);
-  if (!price || price > MAX_PRICE) return null;
+  if (!price || price > MAX_PRICE2) return null;
   const type = UNIT_TYPES[(item.priceData?.unitPriceUnitType ?? "").trim().toLowerCase()];
   let unitPrice = null;
   if (unitAmount && type && (!size || size.unit === type.unit)) unitPrice = round(unitAmount / type.per, 4);
@@ -688,7 +993,7 @@ function parseConsumPrice(item, size, observedAt) {
   };
 }
 function consumSearchTerms() {
-  return [...new Set(CATEGORIES.map((c) => c.names.es.toLowerCase()))];
+  return genericSearchTerms("es");
 }
 async function scrapeConsum(http, opts = {}) {
   const observedAt = (opts.now ?? /* @__PURE__ */ new Date()).toISOString();
@@ -1200,7 +1505,15 @@ var importConsum = async (ctx, log) => {
   }
   await save(ctx, "consum", result, log, "online shop");
 };
-var IMPORTERS = { mercadona: importMercadona, consum: importConsum };
+var importBonarea = async (ctx, log) => {
+  const terms = genericSearchTerms("es").slice(0, ctx.maxCategories);
+  const result = await scrapeBonarea(ctx.http, { terms, log });
+  if (result.products.length < Math.min(20, terms.length)) {
+    throw new Error(`only ${result.products.length} products found for ${terms.length} searches; the page layout may have changed`);
+  }
+  await save(ctx, "bonarea", result, log, "online shop");
+};
+var IMPORTERS = { mercadona: importMercadona, consum: importConsum, bonarea: importBonarea };
 async function main() {
   const { values } = parseArgs({
     options: {
