@@ -15,6 +15,7 @@
 - **Share card (F11):** Share on a result shows a card (store, total, items found, saving vs the next store, priciest items, date) and shares a link to it. The link (`/r/…`) opens the same card in any browser without the app, in the sharer's language with a switcher, plus a "Make your own list" button. The card's data travels in the link itself; nothing is stored on the server. On iOS and Android the card can also be shared as an image.
 - **Weekly basket index (F12):** every Monday at 07:00 the same 20 everyday items are priced at each chain. The List tab shows the ranking and the change since last week; tapping it shows every item per chain. Chains missing more than 20% of the items are listed but not ranked.
 - **Open now:** each store in the comparison shows "Open now", "Closed · opens 09:00" or "Hours unknown", from its OpenStreetMap opening hours in Barcelona time (public holidays included; hours we can't read are never guessed).
+- **Price alerts (F7):** on a product, "Alert me when the price drops" with a target price or "any drop". Alerts stay on the device. The app checks them against fresh prices when it opens and when it comes back to the front after the daily update. Phones get a local notification (product, new price, chain, previous price) and also try a background check, but the phone decides when that runs. The web shows drops in the app only. Manage alerts from Settings.
 
 The deployed app reads real prices from a **local SQLite database** through a read-only API. The daily importer runs on the same server. When no recent prices are available, explicitly labelled sample data is shown instead. Prices are imported for **Mercadona**, **Consum** (added as a seventh chain: open catalogue, many shops around Barcelona) and **bonÀrea**. Store locations come from OpenStreetMap, refreshed weekly by the same import; chains without prices yet are named in the app instead of ranked. DIA and Bonpreu/Esclat refuse automated requests (HTTP 403).
 
@@ -74,5 +75,5 @@ The owner asked to skip arranging the Spanish IP lawyer review on 4 November 202
 ## Next milestones
 
 - Price importers for Alcampo and Caprabo; DIA and Bonpreu/Esclat block automated requests (partnership or receipts instead)
-- Price alerts with push notifications (F7), barcode scanner (F9), shared lists (F10), share card (F11), weekly basket index (F12)
+- Server-side push for price alerts (needs accounts), barcode scanner (F9), shared lists (F10), share card (F11), weekly basket index (F12)
 - v1.1: receipt scanner (UC5), opening hours, flatmate cost splitting

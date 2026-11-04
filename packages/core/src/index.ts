@@ -17,3 +17,4 @@ export * from './shareCard';
 export * from './madridTime';
 export * from './openingHours';
 export * from './basketIndex';
+export * from './alerts';

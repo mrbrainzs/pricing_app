@@ -3,6 +3,7 @@ import { StatusBar } from 'expo-status-bar';
 import { useColorScheme } from 'react-native';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
 
+import { AlertsProvider } from '@/state/Alerts';
 import { AppStateProvider, useApp } from '@/state/AppState';
 import { useColors } from '@/theme';
 
@@ -25,6 +26,7 @@ function RootStack() {
       <Stack.Screen name="paste" options={{ title: t('pasteTitle'), presentation: 'modal' }} />
       <Stack.Screen name="share-card" options={{ title: t('shareCardTitle'), presentation: 'modal' }} />
       <Stack.Screen name="r/[data]" options={{ headerShown: false }} />
+      <Stack.Screen name="alerts" options={{ title: t('alertsTitle') }} />
     </Stack>
   );
 }
@@ -35,8 +37,10 @@ export default function RootLayout() {
     <SafeAreaProvider>
       <ThemeProvider value={scheme === 'dark' ? DarkTheme : DefaultTheme}>
         <AppStateProvider>
-          <StatusBar style="auto" />
-          <RootStack />
+          <AlertsProvider>
+            <StatusBar style="auto" />
+            <RootStack />
+          </AlertsProvider>
         </AppStateProvider>
       </ThemeProvider>
     </SafeAreaProvider>

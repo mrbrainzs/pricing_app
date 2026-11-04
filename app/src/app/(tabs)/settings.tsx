@@ -1,13 +1,17 @@
-import { Card, Chip, Row, Screen, Stepper, T } from '@/components/ui';
+import { router } from 'expo-router';
+
+import { Button, Card, Chip, Row, Screen, Stepper, T } from '@/components/ui';
 import { ChainPicker, LanguagePicker } from '@/components/LanguageChainPickers';
 import { LocationPicker } from '@/components/LocationPicker';
 import { APP_NAME, money } from '@/i18n';
+import { useAlerts } from '@/state/Alerts';
 import { useApp } from '@/state/AppState';
 
 const DISTANCES = [1, 2, 3, 5];
 
 export default function SettingsScreen() {
   const { settings, updateSettings, t } = useApp();
+  const { alerts } = useAlerts();
   return (
     <Screen>
       <T variant="title">{t('settingsTitle')}</T>
@@ -37,6 +41,11 @@ export default function SettingsScreen() {
           <T variant="price">{money(settings.minSaving, settings.lang)}</T>
           <Stepper value={settings.minSaving} onChange={(minSaving) => updateSettings({ minSaving: Math.min(20, minSaving) })} />
         </Row>
+      </Card>
+      <Card>
+        <T variant="heading">{t('alertsTitle')}</T>
+        <T variant="muted">{alerts.length ? t('alertsCount', { n: alerts.length }) : t('alertsSettingsBody')}</T>
+        <Button label={t('alertsManage')} variant="secondary" onPress={() => router.push('/alerts')} />
       </Card>
       <Card>
         <T variant="heading">{t('dataSource')}</T>

@@ -35,9 +35,15 @@ allows imports alongside API reads; each save is transactional and repeated
 observations are deduplicated.
 
 The original `supabase/migrations/` file is an unused reference for a future
-account/shared-list implementation. It is not applied to SQLite. User lists
-and preferences stay in device/browser local storage; there is no server
+account/shared-list implementation. It is not applied to SQLite. User lists,
+preferences and price alerts stay in device/browser local storage; there is no server
 account, shared-list, real-time-sync or alerts service in this release.
+Price alerts (F7) are checked by the app against `/api/catalog`: on start, when it
+returns to the front after the daily update, and on phones in an OS-scheduled
+background task (`expo-background-task`, no more often than every 6 hours; the OS
+decides when). Notifications are local (`expo-notifications`, no push service or APNs
+entitlement). The background task needs a development or store build; it never runs in
+Expo Go or on the iOS simulator.
 `SUPABASE_URL` and `SUPABASE_SERVICE_ROLE_KEY` are not used or needed.
 No Supabase project or cloud data was provided to migrate.
 
