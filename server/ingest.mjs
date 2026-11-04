@@ -574,6 +574,78 @@ function classifyProduct(name, brand) {
 // packages/core/src/freshness.ts
 var DAY_MS = 24 * 60 * 60 * 1e3;
 
+// packages/core/src/geo.ts
+function distanceKm(a, b) {
+  const R = 6371;
+  const rad = Math.PI / 180;
+  const dLat = (b.lat - a.lat) * rad;
+  const dLng = (b.lng - a.lng) * rad;
+  const h = Math.sin(dLat / 2) ** 2 + Math.cos(a.lat * rad) * Math.cos(b.lat * rad) * Math.sin(dLng / 2) ** 2;
+  return 2 * R * Math.asin(Math.sqrt(h));
+}
+var BARCELONA_POSTAL_CODES = {
+  "08001": { lat: 41.38, lng: 2.17, area: "El Raval" },
+  "08002": { lat: 41.3825, lng: 2.177, area: "Barri G\xF2tic" },
+  "08003": { lat: 41.384, lng: 2.184, area: "Sant Pere, la Ribera, Barceloneta" },
+  "08004": { lat: 41.372, lng: 2.16, area: "Poble-sec" },
+  "08005": { lat: 41.399, lng: 2.2, area: "Poblenou" },
+  "08006": { lat: 41.399, lng: 2.148, area: "Sant Gervasi \u2013 Galvany" },
+  "08007": { lat: 41.39, lng: 2.165, area: "Eixample" },
+  "08008": { lat: 41.393, lng: 2.156, area: "Eixample" },
+  "08009": { lat: 41.394, lng: 2.169, area: "Dreta de l\u2019Eixample" },
+  "08010": { lat: 41.393, lng: 2.176, area: "Dreta de l\u2019Eixample" },
+  "08011": { lat: 41.383, lng: 2.16, area: "Sant Antoni" },
+  "08012": { lat: 41.403, lng: 2.157, area: "Vila de Gr\xE0cia" },
+  "08013": { lat: 41.4, lng: 2.179, area: "Sagrada Fam\xEDlia" },
+  "08014": { lat: 41.375, lng: 2.138, area: "Sants" },
+  "08015": { lat: 41.377, lng: 2.151, area: "Sant Antoni \u2013 Hostafrancs" },
+  "08016": { lat: 41.437, lng: 2.177, area: "Nou Barris" },
+  "08017": { lat: 41.399, lng: 2.122, area: "Sarri\xE0" },
+  "08018": { lat: 41.402, lng: 2.192, area: "Fort Pienc \u2013 Poblenou" },
+  "08019": { lat: 41.411, lng: 2.206, area: "Diagonal Mar" },
+  "08020": { lat: 41.419, lng: 2.2, area: "Sant Mart\xED" },
+  "08021": { lat: 41.396, lng: 2.141, area: "Sant Gervasi" },
+  "08022": { lat: 41.41, lng: 2.135, area: "Sant Gervasi \u2013 la Bonanova" },
+  "08023": { lat: 41.413, lng: 2.149, area: "Vallcarca" },
+  "08024": { lat: 41.41, lng: 2.16, area: "Gr\xE0cia" },
+  "08025": { lat: 41.407, lng: 2.172, area: "Baix Guinard\xF3" },
+  "08026": { lat: 41.411, lng: 2.184, area: "Sant Mart\xED \u2013 el Clot" },
+  "08027": { lat: 41.429, lng: 2.188, area: "Sant Andreu" },
+  "08028": { lat: 41.378, lng: 2.125, area: "Les Corts" },
+  "08029": { lat: 41.387, lng: 2.143, area: "Les Corts \u2013 Eixample" },
+  "08030": { lat: 41.436, lng: 2.198, area: "Sant Andreu \u2013 Bon Pastor" },
+  "08031": { lat: 41.432, lng: 2.164, area: "Horta" },
+  "08032": { lat: 41.425, lng: 2.154, area: "Horta \u2013 el Carmel" },
+  "08033": { lat: 41.45, lng: 2.188, area: "Trinitat \u2013 Torre Bar\xF3" },
+  "08034": { lat: 41.391, lng: 2.11, area: "Pedralbes" },
+  "08035": { lat: 41.425, lng: 2.14, area: "Vall d\u2019Hebron" },
+  "08036": { lat: 41.388, lng: 2.148, area: "Eixample (Hospital Cl\xEDnic)" },
+  "08037": { lat: 41.4, lng: 2.164, area: "Gr\xE0cia \u2013 Passeig de Sant Joan" },
+  "08038": { lat: 41.365, lng: 2.15, area: "Montju\xEFc" },
+  "08039": { lat: 41.375, lng: 2.185, area: "Port Vell" },
+  "08040": { lat: 41.348, lng: 2.14, area: "Zona Franca" },
+  "08041": { lat: 41.419, lng: 2.176, area: "Guinard\xF3" },
+  "08042": { lat: 41.439, lng: 2.178, area: "Nou Barris \u2013 Prosperitat" }
+};
+function isCataloniaPostalCode(code) {
+  return /^(08|17|25|43)\d{3}$/.test(code.trim());
+}
+function postalCodeLocation(code) {
+  return BARCELONA_POSTAL_CODES[code.trim()] ?? null;
+}
+function nearestPostalCode(pos) {
+  let best = null;
+  let bestD = Infinity;
+  for (const [code, loc] of Object.entries(BARCELONA_POSTAL_CODES)) {
+    const d = distanceKm(pos, loc);
+    if (d < bestD) {
+      bestD = d;
+      best = code;
+    }
+  }
+  return best;
+}
+
 // ingest/src/chains/mercadona.ts
 var MERCADONA_API = "https://tienda.mercadona.es/api";
 var num = (v) => {
@@ -725,12 +797,42 @@ function openDatabase(path) {
     CREATE INDEX IF NOT EXISTS price_latest_idx ON price_observations(product_id, zone, observed_at DESC);
     CREATE INDEX IF NOT EXISTS price_time_idx ON price_observations(observed_at);
     INSERT OR IGNORE INTO schema_migrations VALUES(1, strftime('%Y-%m-%dT%H:%M:%fZ','now'));
+    CREATE TABLE IF NOT EXISTS import_runs (name TEXT PRIMARY KEY, finished_at TEXT NOT NULL, detail TEXT);
+    INSERT OR IGNORE INTO schema_migrations VALUES(2, strftime('%Y-%m-%dT%H:%M:%fZ','now'));
   `);
   const chain = db.prepare("INSERT OR IGNORE INTO chains VALUES(?, ?)");
   for (const c of Object.values(CHAINS)) chain.run(c.id, c.name);
   const category = db.prepare("INSERT INTO categories VALUES(?, ?) ON CONFLICT(id) DO UPDATE SET data=excluded.data");
   for (const c of CATEGORIES) category.run(c.id, JSON.stringify(c));
   return db;
+}
+function replaceStores(db, source, stores) {
+  const insert = db.prepare("INSERT INTO stores VALUES(?, ?) ON CONFLICT(id) DO UPDATE SET data=excluded.data");
+  db.exec("BEGIN IMMEDIATE");
+  try {
+    db.prepare("DELETE FROM stores WHERE json_extract(data, '$.source') = ?").run(source);
+    for (const s of stores) {
+      if (s.source !== source) throw new Error(`Store ${s.id} is not from ${source}`);
+      if (!Number.isFinite(s.lat) || !Number.isFinite(s.lng) || !s.zone) throw new Error(`Store ${s.id} has no position or zone`);
+      insert.run(s.id, JSON.stringify(s));
+    }
+    db.exec("COMMIT");
+  } catch (err) {
+    db.exec("ROLLBACK");
+    throw err;
+  }
+  return stores.length;
+}
+function lastRun(db, name) {
+  return db.prepare("SELECT finished_at FROM import_runs WHERE name=?").get(name)?.finished_at ?? null;
+}
+function recordRun(db, name, at, detail) {
+  db.prepare("INSERT INTO import_runs VALUES(?, ?, ?) ON CONFLICT(name) DO UPDATE SET finished_at=excluded.finished_at, detail=excluded.detail").run(name, at.toISOString(), detail === void 0 ? null : JSON.stringify(detail));
+}
+function storeZones(db, chain) {
+  const rows = db.prepare(`SELECT json_extract(data, '$.zone') AS zone, MIN(json_extract(data, '$.postalCode')) AS postal
+    FROM stores WHERE json_extract(data, '$.chain') = ? AND json_extract(data, '$.postalCode') IS NOT NULL GROUP BY zone`).all(chain);
+  return new Map(rows.map((r) => [r.zone, r.postal]));
 }
 
 // ingest/src/sqliteSink.ts
@@ -805,6 +907,143 @@ var SqliteSink = class {
   }
 };
 
+// ingest/src/stores/osm.ts
+var OVERPASS_URL = "https://overpass-api.de/api/interpreter";
+var BARCELONA_BBOX = { south: 41.317, west: 2.052, north: 41.468, east: 2.229 };
+function overpassQuery(bbox = BARCELONA_BBOX) {
+  const box = `${bbox.south},${bbox.west},${bbox.north},${bbox.east}`;
+  return `[out:json][timeout:120];
+nwr["shop"~"^(supermarket|convenience)$"](${box});
+out center tags;`;
+}
+var CHAIN_PATTERNS = [
+  ["mercadona", /\bmercadona\b/],
+  ["alcampo", /\balcampo\b|\bauchan\b/],
+  ["bonarea", /\bbon ?area\b/],
+  ["caprabo", /\bcaprabo\b/],
+  ["bonpreu", /\bbon ?preu\b|\besclat\b/],
+  // "Dia", "DIA", "Dia Market", "La Plaza de DIA" — but not "Diagonal" or "Super Dia y Noche".
+  ["dia", /^(la plaza de )?dia( market| maxi)?$/]
+];
+function chainFromTags(tags = {}) {
+  for (const key of ["brand", "name", "operator"]) {
+    const value = tags[key];
+    if (!value) continue;
+    const n = normalize(value);
+    for (const [chain, re] of CHAIN_PATTERNS) if (re.test(n)) return chain;
+  }
+  return null;
+}
+function address(tags) {
+  const street = tags["addr:street"];
+  if (!street) return void 0;
+  return tags["addr:housenumber"] ? `${street}, ${tags["addr:housenumber"]}` : street;
+}
+function storePostalCode(tags, lat, lng) {
+  const tagged = tags["addr:postcode"]?.trim();
+  if (tagged && /^\d{5}$/.test(tagged) && isCataloniaPostalCode(tagged)) return tagged;
+  const nearest = nearestPostalCode({ lat, lng });
+  const centre = nearest ? postalCodeLocation(nearest) : null;
+  return nearest && centre && distanceKm(centre, { lat, lng }) <= 1.5 ? nearest : void 0;
+}
+function parseOsmElements(elements) {
+  const out = [];
+  const seen = /* @__PURE__ */ new Set();
+  for (const el of elements) {
+    const tags = el.tags ?? {};
+    const chain = chainFromTags(tags);
+    const lat = el.lat ?? el.center?.lat;
+    const lng = el.lon ?? el.center?.lon;
+    if (!chain || lat === void 0 || lng === void 0) continue;
+    const id = `osm:${el.type}/${el.id}`;
+    if (seen.has(id)) continue;
+    seen.add(id);
+    const addr = address(tags);
+    const rawName = tags.name?.trim() || CHAINS[chain].name;
+    const name = addr && normalize(rawName) === normalize(CHAINS[chain].name) ? `${rawName} \xB7 ${tags["addr:street"]}` : rawName;
+    out.push({
+      id,
+      chain,
+      name,
+      lat: Math.round(lat * 1e6) / 1e6,
+      lng: Math.round(lng * 1e6) / 1e6,
+      address: addr,
+      postalCode: storePostalCode(tags, lat, lng),
+      openingHours: tags.opening_hours,
+      source: "openstreetmap",
+      osmType: el.type
+    });
+  }
+  return out;
+}
+async function fetchOsmStores(http, bbox = BARCELONA_BBOX) {
+  const res = await http.request(OVERPASS_URL, {
+    method: "POST",
+    headers: { "content-type": "application/x-www-form-urlencoded" },
+    body: `data=${encodeURIComponent(overpassQuery(bbox))}`,
+    signal: AbortSignal.timeout(18e4)
+  });
+  const json = await res.json();
+  if (!Array.isArray(json.elements)) throw new Error("Overpass returned no elements array");
+  return parseOsmElements(json.elements);
+}
+async function assignZones(candidates, resolve) {
+  const stores = [];
+  const skipped = [];
+  for (const c of candidates) {
+    let zone = null;
+    try {
+      zone = await resolve(c.chain, c.postalCode);
+    } catch {
+      zone = null;
+    }
+    if (!zone) {
+      skipped.push(c);
+      continue;
+    }
+    const { osmType: _osmType, ...store } = c;
+    stores.push({ ...store, zone });
+  }
+  return { stores, skipped };
+}
+function defaultZoneResolver(mercadonaWarehouse2) {
+  const cache = /* @__PURE__ */ new Map();
+  return async (chain, postalCode) => {
+    if (chain === "mercadona") {
+      if (!postalCode) return null;
+      if (!cache.has(postalCode)) cache.set(postalCode, mercadonaWarehouse2(postalCode));
+      return cache.get(postalCode);
+    }
+    return CHAINS[chain].singlePriceZone ? "cat" : "bcn";
+  };
+}
+function checkStoreResult(stores, minStores = 20, minChains = 3) {
+  const chains = new Set(stores.map((s) => s.chain));
+  if (stores.length < minStores || chains.size < minChains) {
+    throw new Error(`Store import looks incomplete (${stores.length} stores, ${chains.size} chains); keeping the previous list.`);
+  }
+}
+
+// ingest/src/stores/refresh.ts
+var STORES_RUN = "stores:openstreetmap";
+var STORES_MAX_AGE_DAYS = 7;
+function storesDue(db, now = /* @__PURE__ */ new Date()) {
+  const last = lastRun(db, STORES_RUN);
+  return !last || now.getTime() - Date.parse(last) > STORES_MAX_AGE_DAYS * 864e5;
+}
+async function refreshStores(db, http, log, deps = {}) {
+  const candidates = await (deps.fetchStores ?? fetchOsmStores)(http);
+  const resolver = defaultZoneResolver(deps.warehouse ?? ((pc) => mercadonaWarehouse(http, pc)));
+  const { stores, skipped } = await assignZones(candidates, resolver);
+  checkStoreResult(stores);
+  replaceStores(db, "openstreetmap", stores);
+  const byChain = {};
+  for (const s of stores) byChain[s.chain] = (byChain[s.chain] ?? 0) + 1;
+  recordRun(db, STORES_RUN, deps.now ?? /* @__PURE__ */ new Date(), { stores: stores.length, skipped: skipped.length, byChain });
+  log(`stores: ${stores.length} saved (${Object.entries(byChain).map(([c, n]) => `${c} ${n}`).join(", ")})` + (skipped.length ? `; ${skipped.length} skipped without a verified price zone` : ""));
+  return { stores, skipped };
+}
+
 // ingest/src/run.ts
 var DEFAULT_POSTAL_CODES = ["08001", "08012", "08014", "08018", "08027", "08028"];
 async function main() {
@@ -815,7 +1054,8 @@ async function main() {
       sink: { type: "string", default: "json" },
       details: { type: "string", default: "new" },
       "max-categories": { type: "string" },
-      out: { type: "string", default: "out" }
+      out: { type: "string", default: "out" },
+      stores: { type: "string", default: "auto" }
     }
   });
   let sink;
@@ -828,7 +1068,21 @@ async function main() {
   if (values.chain !== "mercadona") {
     throw new Error(`Chain "${values.chain}" has no importer yet. v1 importers: mercadona.`);
   }
+  if (!["auto", "force", "skip", "only"].includes(values.stores)) throw new Error("--stores must be auto, force, skip or only.");
   const http = new PoliteClient({ delayMs: 400 });
+  if (sink instanceof SqliteSink && values.stores !== "skip") {
+    if (values.stores !== "auto" || storesDue(sink.db)) {
+      try {
+        await refreshStores(sink.db, http, (m) => console.log(`[stores] ${m}`));
+      } catch (err) {
+        if (values.stores === "only") throw err;
+        console.warn(`[stores] refresh failed, keeping previous locations: ${err.message}`);
+      }
+    }
+    if (values.stores === "only") return;
+  } else if (values.stores === "only") {
+    throw new Error("--stores only needs --sink sqlite.");
+  }
   const log = (m) => console.log(`[mercadona] ${m}`);
   const postalCodes = values.postal.split(",").map((s) => s.trim()).filter(Boolean);
   const zones = /* @__PURE__ */ new Map();
@@ -836,6 +1090,14 @@ async function main() {
     const wh = await mercadonaWarehouse(http, pc);
     log(`postal code ${pc} -> warehouse ${wh}`);
     if (!zones.has(wh)) zones.set(wh, pc);
+  }
+  if (sink instanceof SqliteSink) {
+    for (const [zone, pc] of storeZones(sink.db, "mercadona")) {
+      if (!zones.has(zone)) {
+        zones.set(zone, pc);
+        log(`warehouse ${zone} added because stores use it (postal code ${pc})`);
+      }
+    }
   }
   const existing = await sink.existingProducts("mercadona");
   const seenDetail = /* @__PURE__ */ new Set();

@@ -469,6 +469,8 @@ function openDatabase(path) {
     CREATE INDEX IF NOT EXISTS price_latest_idx ON price_observations(product_id, zone, observed_at DESC);
     CREATE INDEX IF NOT EXISTS price_time_idx ON price_observations(observed_at);
     INSERT OR IGNORE INTO schema_migrations VALUES(1, strftime('%Y-%m-%dT%H:%M:%fZ','now'));
+    CREATE TABLE IF NOT EXISTS import_runs (name TEXT PRIMARY KEY, finished_at TEXT NOT NULL, detail TEXT);
+    INSERT OR IGNORE INTO schema_migrations VALUES(2, strftime('%Y-%m-%dT%H:%M:%fZ','now'));
   `);
   const chain = db2.prepare("INSERT OR IGNORE INTO chains VALUES(?, ?)");
   for (const c of Object.values(CHAINS)) chain.run(c.id, c.name);
