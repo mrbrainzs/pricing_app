@@ -615,9 +615,9 @@ function parseMercadonaPrice(p, zone, observedAt) {
   const price = num(pi.unit_price);
   if (!price) return null;
   const refUnit = pi.reference_format ? REFERENCE_UNIT[pi.reference_format.trim().toLowerCase()] : void 0;
-  let unitPrice = refUnit ? num(pi.reference_price) ?? num(pi.bulk_price) : null;
+  const size = mercadonaSize(p);
+  let unitPrice = refUnit && (!size || refUnit === size.unit) ? num(pi.reference_price) ?? num(pi.bulk_price) : null;
   if (unitPrice === null) {
-    const size = mercadonaSize(p);
     unitPrice = size ? round(price / size.amount, 4) : null;
   }
   const previous = num(pi.previous_unit_price);
