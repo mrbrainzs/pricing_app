@@ -13,3 +13,4 @@ export * from './priceLabel';
 export * from './geo';
 export * from './compare';
 export * from './sample';
+export * from './shareCard';

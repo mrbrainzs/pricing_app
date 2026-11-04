@@ -23,6 +23,8 @@ function RootStack() {
       <Stack.Screen name="compare" options={{ title: t('compareTitle') }} />
       <Stack.Screen name="product/[id]" options={{ title: '' }} />
       <Stack.Screen name="paste" options={{ title: t('pasteTitle'), presentation: 'modal' }} />
+      <Stack.Screen name="share-card" options={{ title: t('shareCardTitle'), presentation: 'modal' }} />
+      <Stack.Screen name="r/[data]" options={{ headerShown: false }} />
     </Stack>
   );
 }

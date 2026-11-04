@@ -50,6 +50,13 @@ The API runs as `www-data` on loopback `127.0.0.1:3007`, behind Nginx:
 There are no network write endpoints. SQLite files are never served by Nginx.
 The web build uses `EXPO_PUBLIC_API_URL=/api`. A native build needs an absolute
 HTTPS API URL and an appropriate CORS policy if used in another web origin.
+
+Share links (F11, `/r/<data>`) point at the page's own origin on the web. Native
+builds point them at `EXPO_PUBLIC_SITE_URL`, which defaults to
+`https://quinsuper.trottedmedia.com`; set it at build time for another domain.
+The card's data is inside the link, so the server stores nothing. Nginx already
+serves `/r/…` with `index.html`. The page's title and description are set in the
+browser, so chat apps show only the generic preview from `index.html`.
 Without recent imported data, the app falls back to explicitly labelled sample
 data; samples are never mixed with imported prices or real store locations.
 
