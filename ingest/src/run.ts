@@ -10,6 +10,7 @@
  *   --sink         json (writes ./out) or sqlite (local DATABASE_PATH)
  *   --details      Mercadona: new (default) fetches brand/EAN only for unseen products; all; none
  *   --max-categories N   stop early, for test runs (Mercadona categories / Consum and bonÀrea search terms)
+ *   --explain      bonÀrea: log example names for each reason a product was dropped
  *   --stores       auto (default): with sqlite, refresh store locations from OpenStreetMap
  *                  when they are more than 7 days old; force; skip; only (stores, no prices)
  *
@@ -26,7 +27,7 @@ import { PoliteClient } from './http';
 import { JsonSink, type Sink } from './sink';
 import { SqliteSink } from './sqliteSink';
 import { refreshStores, storesDue } from './stores/refresh';
-import type { ChainId } from '@pricing/core';
+import { CATEGORIES, type ChainId } from '@pricing/core';
 import type { ScrapeResult } from './types';
 
 const DEFAULT_POSTAL_CODES = ['08001', '08012', '08014', '08018', '08027', '08028'];
@@ -37,6 +38,7 @@ interface ImportContext {
   postalCodes: string[];
   details: string;
   maxCategories?: number;
+  explain: boolean;
 }
 
 type Importer = (ctx: ImportContext, log: (m: string) => void) => Promise<void>;
@@ -44,6 +46,12 @@ type Importer = (ctx: ImportContext, log: (m: string) => void) => Promise<void>;
 async function save(ctx: ImportContext, chain: ChainId, result: ScrapeResult, log: (m: string) => void, label: string) {
   const classified = result.products.filter((p) => p.categoryId).length;
   log(`${label}: ${result.products.length} products (${classified} matched to generic items), ${result.prices.length} prices`);
+  // Coverage per generic item, so gaps (an item with no products at this chain) show in the log.
+  const perItem = new Map<string, number>();
+  for (const p of result.products) if (p.categoryId) perItem.set(p.categoryId, (perItem.get(p.categoryId) ?? 0) + 1);
+  const missing = CATEGORIES.map((c) => c.id).filter((id) => !perItem.has(id));
+  log(`per item: ${[...perItem].map(([id, n]) => `${id} ${n}`).join(', ')}`);
+  if (missing.length) log(`no products for: ${missing.join(', ')}`);
   const saved = await ctx.sink.save(chain, result.products, result.prices);
   log(`saved ${saved.products} products, ${saved.prices} prices${saved.shrunk.length ? `, size went down: ${saved.shrunk.join(', ')}` : ''}`);
 }
@@ -88,7 +96,7 @@ const importConsum: Importer = async (ctx, log) => {
 
 const importBonarea: Importer = async (ctx, log) => {
   const terms = genericSearchTerms('es').slice(0, ctx.maxCategories);
-  const result = await scrapeBonarea(ctx.http, { terms, log });
+  const result = await scrapeBonarea(ctx.http, { terms, log, explain: ctx.explain });
   // bonÀrea's search pages are HTML: a near-empty result means the page layout changed.
   if (result.products.length < Math.min(20, terms.length)) {
     throw new Error(`only ${result.products.length} products found for ${terms.length} searches; the page layout may have changed`);
@@ -108,6 +116,7 @@ async function main() {
       'max-categories': { type: 'string' },
       out: { type: 'string', default: 'out' },
       stores: { type: 'string', default: 'auto' },
+      explain: { type: 'boolean', default: false },
     },
   });
 
@@ -149,6 +158,7 @@ async function main() {
     postalCodes: values.postal!.split(',').map((s) => s.trim()).filter(Boolean),
     details: values.details!,
     maxCategories: values['max-categories'] ? Number(values['max-categories']) : undefined,
+    explain: values.explain ?? false,
   };
   const failed: string[] = [];
   for (const chain of chains) {

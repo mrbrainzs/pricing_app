@@ -28,7 +28,11 @@ export interface BonareaCard {
   imageUrl?: string;
   name: string;
   weight?: string;
+  /** Shelf price: per item ("5,34 €/u."), or per kg / litre for goods sold by weight. */
   price: number | null;
+  pricePer: 'u' | 'kg' | 'l' | null;
+  /** The price line as shown, for diagnostics when it can't be read. */
+  priceText?: string;
   unitPrice: { value: number; unit: string } | null;
   outOfStock: boolean;
 }
@@ -58,7 +62,8 @@ export function parseBonareaPage(html: string): BonareaCard[] {
     const code = c.match(/data-identifier=["']?([0-9]{2}\*[0-9]+)/)?.[1];
     const name = c.match(/<div class=["']?text["']?><p>([^<]+)/)?.[1];
     if (!code || !name) continue;
-    const price = c.match(/<div class=["']?price["']?>\s*<span>\s*([\d.,]+)\s*€\/u\.?\s*<\/span>/);
+    const price = c.match(/<div class=["']?price["']?>\s*<span>\s*([\d.,]+)\s*€\/(u|kg|l)\.?\s*<\/span>/);
+    const priceLine = c.match(/<div class=["']?price["']?>([\s\S]*?)<\/div>/)?.[1];
     const unit = c.match(/<div class=["']?price["']?>[\s\S]*?<\/span>\s*\(\s*([\d.,]+)\s*€\/(kg|l|ml|u)\.?\s*\)/);
     const unitValue = unit ? euro(unit[1]!) : null;
     out.push({
@@ -68,6 +73,8 @@ export function parseBonareaPage(html: string): BonareaCard[] {
       name: decodeHtml(name).replace(/\s+/g, ' ').trim(),
       weight: c.match(/<div class=["']?weight["']?>([^<]*)<\/div>/)?.[1]?.trim() || undefined,
       price: price ? euro(price[1]!) : null,
+      pricePer: price ? (price[2] as BonareaCard['pricePer']) : null,
+      priceText: priceLine ? decodeHtml(priceLine.replace(/<[^>]+>/g, ' ')).replace(/\s+/g, ' ').trim() : undefined,
       unitPrice: unit && unitValue ? { value: unitValue, unit: unit[2]! } : null,
       outOfStock: c.includes('block-no-stock'),
     });
@@ -112,7 +119,8 @@ export function cardToProduct(card: BonareaCard): ScrapedProduct {
     brand: known ?? (own ? 'bonÀrea' : undefined),
     isOwnBrand: own,
     categoryId: classifyProduct(card.name, known),
-    size: bonareaSize(card),
+    // Sold by weight: the shelf price is for 1 kg (or 1 l), whatever the approximate piece weighs.
+    size: card.pricePer === 'kg' || card.pricePer === 'l' ? { amount: 1, unit: card.pricePer } : bonareaSize(card),
     imageUrl: card.imageUrl,
   };
 }
@@ -121,7 +129,8 @@ export function cardToPrice(card: BonareaCard, size: Size | null, observedAt: st
   if (card.outOfStock || !card.price || card.price > MAX_PRICE) return null;
   const base = card.unitPrice ? UNIT_BASE[card.unitPrice.unit] : undefined;
   let unitPrice: number | null = null;
-  if (card.unitPrice && base && (!size || size.unit === base)) unitPrice = card.unitPrice.value;
+  if (card.pricePer === 'kg' || card.pricePer === 'l') unitPrice = card.price;
+  else if (card.unitPrice && base && (!size || size.unit === base)) unitPrice = card.unitPrice.value;
   else if (size) unitPrice = round(card.price / size.amount, 4);
   return {
     chain: 'bonarea',
@@ -138,7 +147,11 @@ export interface BonareaOptions {
   terms?: string[];
   now?: Date;
   log?: (msg: string) => void;
+  /** Also log example names for each reason a card was dropped. */
+  explain?: boolean;
 }
+
+type DropReason = 'already kept' | 'not one of our items' | 'no size' | 'out of stock' | 'price unreadable';
 
 export async function scrapeBonarea(http: PoliteClient, opts: BonareaOptions = {}): Promise<ScrapeResult> {
   const observedAt = (opts.now ?? new Date()).toISOString();
@@ -152,17 +165,32 @@ export async function scrapeBonarea(http: PoliteClient, opts: BonareaOptions = {
     });
     const cards = parseBonareaPage(await res.text());
     if (cards.length === 0) emptyPages++;
+    const dropped = new Map<DropReason, string[]>();
+    const drop = (reason: DropReason, example: string) => dropped.set(reason, [...(dropped.get(reason) ?? []), example]);
+    const before = products.size;
     for (const card of cards) {
-      if (products.has(card.code)) continue;
+      if (products.has(card.code)) { drop('already kept', card.name); continue; }
       const product = cardToProduct(card);
       // Keep only products in one of our generic items, with a size to compare by.
-      if (!product.categoryId || !product.size) continue;
+      if (!product.categoryId) { drop('not one of our items', card.name); continue; }
+      if (!product.size) { drop('no size', `${card.name} [${card.weight ?? 'no weight'}]`); continue; }
       const price = cardToPrice(card, product.size, observedAt);
-      if (!price) continue;
+      if (!price) {
+        if (card.outOfStock) drop('out of stock', card.name);
+        else drop('price unreadable', `${card.name} [${card.priceText ?? 'no price line'}]`);
+        continue;
+      }
       products.set(card.code, product);
       prices.set(card.code, price);
     }
-    log(`"${term}": ${cards.length} cards, ${products.size} products kept so far`);
+    const reasons = [...dropped].map(([r, names]) => `${r} ${names.length}`).join(', ');
+    log(`"${term}": ${cards.length} cards, ${products.size - before} new kept${reasons ? ` (dropped: ${reasons})` : ''}`);
+    if (opts.explain) {
+      for (const [reason, names] of dropped) {
+        if (reason === 'already kept') continue;
+        log(`    ${reason}: ${names.slice(0, 6).join(' | ')}`);
+      }
+    }
   }
   if (emptyPages > 0) log(`${emptyPages} searches returned no product cards`);
   return { products: [...products.values()], prices: [...prices.values()] };

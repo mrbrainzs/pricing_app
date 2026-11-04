@@ -53,6 +53,33 @@ describe('bonÀrea search page (real capture)', () => {
   });
 });
 
+// The real card markup with the price line changed to a per-kg price, as goods sold by weight
+// may show. Hand-made: no captured page has this format yet.
+const perKgCard = (name: string, price: string, weight = 'aprox. 1.000 g', code = '13*0777') =>
+  `<div class="block-product block-product-shopping none" id=liArticle0><a href=javascript:void(null) data-identifier=${code} data-friendly=https://www.bonarea-online.com/online/producto/x/13_0777 class=article-link><div class=text><p>${name}<div class=weight>${weight}</div></div></a><div class=mt-auto><div class=price><span>${price}</span></div><div class=block-btn-article></div></div></div>`;
+
+describe('bonÀrea goods sold by weight', () => {
+  it('reads a per-kg shelf price as the price of 1 kg', () => {
+    const [card] = parseBonareaPage(perKgCard('Tomate de ensalada', '2,35 €/kg'));
+    expect(card).toMatchObject({ price: 2.35, pricePer: 'kg' });
+    const product = cardToProduct(card!);
+    expect(product).toMatchObject({ categoryId: 'tomatoes', size: { amount: 1, unit: 'kg' } });
+    expect(cardToPrice(card!, product.size, 'x')).toMatchObject({ price: 2.35, unitPrice: 2.35 });
+  });
+
+  it('explains why cards were dropped', async () => {
+    const page = perKgCard('Tomate de ensalada', '2,35 €/kg') + perKgCard('Tomate raro', 'consultar', undefined, '13*0778')
+      + perKgCard('Ketchup picante', '1,99 €/u.', '300 g', '13*0779') + perKgCard('Tomate de ensalada', '2,35 €/kg');
+    vi.stubGlobal('fetch', vi.fn(async () => new Response(page, { status: 200 })));
+    const logs: string[] = [];
+    await scrapeBonarea(new PoliteClient({ delayMs: 0 }), { terms: ['tomate'], log: (m) => logs.push(m), explain: true });
+    vi.unstubAllGlobals();
+    expect(logs[0]).toBe('"tomate": 4 cards, 1 new kept (dropped: price unreadable 1, not one of our items 1, already kept 1)');
+    expect(logs).toContain('    price unreadable: Tomate raro [consultar]');
+    expect(logs).toContain('    not one of our items: Ketchup picante');
+  });
+});
+
 describe('bonÀrea parsing details', () => {
   it.each([
     ['6 l', { amount: 6, unit: 'l' }],
