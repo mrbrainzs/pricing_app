@@ -116,7 +116,7 @@ var CATEGORIES = [
     names: { ca: "Mantega", es: "Mantequilla", en: "Butter" },
     synonyms: [],
     include: ["mantequilla", "mantega"],
-    exclude: ["galleta", "pasta de", "bollo", "croissant", "sabor", "cacahuete", "crema de", "palmera", "magdalena", "cacauet"]
+    exclude: ["galleta", "pasta de", "bollo", "croissant", "sabor", "cacahuete", "crema de", "palmera", "magdalena", "cacauet", "palomitas", "tartaleta", "hojaldre", "rosquilla", "trenza", "untar"]
   },
   {
     id: "cheese_sliced",
@@ -269,7 +269,7 @@ var CATEGORIES = [
     names: { ca: "Tom\xE0quets", es: "Tomates", en: "Tomatoes" },
     synonyms: ["tomaquet", "tomate", "tomato"],
     include: ["tomate", "tomaquet"],
-    exclude: ["triturado", "triturat", "frito", "fregit", "concentrado", "salsa", "seco", "ketchup", "zumo", "pelado", "gazpacho", "natural entero", "lata", "untar", "sec", "suc", "tamizado", "rallado", "ratllat", "deshidratado"]
+    exclude: ["natural", "triturado", "triturat", "frito", "fregit", "concentrado", "salsa", "seco", "ketchup", "zumo", "pelado", "gazpacho", "natural entero", "lata", "untar", "sec", "suc", "tamizado", "rallado", "ratllat", "deshidratado"]
   },
   {
     id: "bananas",
@@ -331,7 +331,7 @@ var CATEGORIES = [
     defaultSize: ud(1),
     names: { ca: "Enciam", es: "Lechuga", en: "Lettuce" },
     synonyms: ["enciam iceberg", "lechuga iceberg", "lettuce"],
-    include: ["lechuga", "enciam"],
+    include: ["lechuga", "enciam", "cogollo", "corazones de lechuga", "corazon de lechuga", "corazones lechuga", "cors d enciam"],
     exclude: ["ensalada", "mezcla", "brotes", "amanida", "barreja"]
   },
   // Meat and fish
@@ -342,7 +342,7 @@ var CATEGORIES = [
     names: { ca: "Pit de pollastre", es: "Pechuga de pollo", en: "Chicken breast" },
     synonyms: ["pollastre", "pollo", "chicken", "pit pollastre"],
     include: ["pechuga de pollo", "pechugas de pollo", "filetes de pechuga de pollo", "filete de pechuga de pollo", "finisimo de pechuga de pollo", "pit de pollastre", "filets de pit de pollastre", "filet de pit de pollastre"],
-    exclude: ["empanad", "cocida", "asada", "lonchas", "fiambre", "nuggets", "rellena", "arrebossat", "cuit", "llesques", "pavo", "gall dindi"]
+    exclude: ["empanad", "cocida", "asada", "lonchas", "fiambre", "nuggets", "rellena", "arrebossat", "cuit", "llesques", "pavo", "gall dindi", "al natural", "tiras"]
   },
   {
     id: "minced_meat",
@@ -426,7 +426,7 @@ var CATEGORIES = [
     names: { ca: "Rentaplats", es: "Lavavajillas a mano", en: "Washing-up liquid" },
     synonyms: ["fairy", "lavavajillas", "dish soap", "washing up liquid"],
     include: ["lavavajillas a mano", "lavavajillas mano", "lavavajillas$", "friegaplatos", "rentaplats a ma", "rentaplats"],
-    exclude: ["maquina", "pastillas", "capsulas", "rentavaixelles", "pastilles", "abrillantador", "sal$", "todo en", "polvo"]
+    exclude: ["maquina", "pastillas", "capsulas", "rentavaixelles", "pastilles", "abrillantador", "sal$", "todo en", "polvo", "limpiamaquinas", "ambientador"]
   },
   // Personal care
   {
