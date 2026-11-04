@@ -1,8 +1,21 @@
 import { createServer } from 'node:http';
-import { catalog, history, openDatabase } from './database';
+import { indexMoment } from '@pricing/core';
+import { catalog, history, openDatabase, weeklyIndex } from './database';
 
 if (!process.env.DATABASE_PATH) throw new Error('DATABASE_PATH is required');
 const db = openDatabase(process.env.DATABASE_PATH);
+
+/** The weekly index only changes on Monday at 07:00 (or when late prices arrive): keep it for 10 minutes. */
+let indexCache: { moment: number; until: number; data: unknown } | null = null;
+function cachedWeeklyIndex() {
+  const now = new Date();
+  const moment = indexMoment(now).getTime();
+  if (!indexCache || indexCache.moment !== moment || now.getTime() > indexCache.until) {
+    indexCache = { moment, until: now.getTime() + 10 * 60_000, data: weeklyIndex(db, now) };
+  }
+  return indexCache.data;
+}
+
 const server = createServer((req, res) => {
   res.setHeader('content-type', 'application/json; charset=utf-8');
   res.setHeader('x-content-type-options', 'nosniff');
@@ -15,6 +28,7 @@ const server = createServer((req, res) => {
       const counts = db.prepare(`SELECT COUNT(*) AS observations,MAX(observed_at) AS lastImport FROM price_observations`).get();
       data = { status: 'ok', database: 'sqlite', release: process.env.RELEASE_SHA ?? 'local', ...counts };
     } else if (url.pathname === '/api/catalog') data = catalog(db);
+    else if (url.pathname === '/api/index') data = cachedWeeklyIndex();
     else if (url.pathname.startsWith('/api/history/')) data = history(db, decodeURIComponent(url.pathname.slice('/api/history/'.length)));
     else { res.writeHead(404); res.end('{"error":"Not found"}'); return; }
     res.end(JSON.stringify(data));

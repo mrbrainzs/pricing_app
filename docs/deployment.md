@@ -46,6 +46,11 @@ The API runs as `www-data` on loopback `127.0.0.1:3007`, behind Nginx:
 - `GET /api/health`: service/database status, source release and import timestamp.
 - `GET /api/catalog`: imported products and freshest prices from the last seven days.
 - `GET /api/history/<product-id>`: up to 90 days in a single pricing zone.
+- `GET /api/index`: weekly basket index (F12), computed read-only from stored prices: the
+  fixed 20-item basket (`INDEX_BASKET` in `packages/core/src/basketIndex.ts`) priced per chain
+  as of the latest Monday 07:00 Europe/Madrid, plus the previous week and the change
+  (`previous` is null until a week of data exists). Mercadona uses the warehouse with the
+  most stores (`bcn1` if none); `zones` in the response says which. Cached for 10 minutes.
 
 There are no network write endpoints. SQLite files are never served by Nginx.
 The web build uses `EXPO_PUBLIC_API_URL=/api`. A native build needs an absolute

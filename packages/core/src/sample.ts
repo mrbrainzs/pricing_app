@@ -98,6 +98,12 @@ const STEM: Record<string, [string, string, Size, string]> = {
 const SAMPLE_CHAINS: ChainId[] = ['mercadona', 'alcampo', 'bonarea', 'caprabo', 'dia', 'bonpreu'];
 const ZONE: Record<string, string> = { mercadona: 'bcn1', alcampo: 'bcn', bonarea: 'cat', caprabo: 'bcn', dia: 'bcn', bonpreu: 'cat' };
 const CATALAN_NAMES = new Set<ChainId>(['bonarea', 'bonpreu']);
+/** Typical opening hours (OSM syntax) for sample stores; Bonpreu has none, to show "hours unknown". */
+const SAMPLE_HOURS: Partial<Record<ChainId, string>> = {
+  mercadona: 'Mo-Sa 09:00-21:30; Su,PH off', alcampo: 'Mo-Sa 09:00-22:00; Su,PH off',
+  bonarea: 'Mo-Fr 09:00-14:00,17:00-21:00; Sa 09:00-14:00; Su,PH off', caprabo: 'Mo-Sa 09:00-21:30; Su 10:00-14:30; PH off',
+  dia: 'Mo-Sa 09:00-21:30; Su 09:00-15:00; PH off',
+};
 const OWN_FACTOR: Record<string, number> = { mercadona: 1.0, alcampo: 0.96, bonarea: 0.98, caprabo: 1.12, dia: 1.02, bonpreu: 1.05 };
 const BRAND_FACTOR: Record<string, number> = { mercadona: 1.02, alcampo: 0.95, bonarea: 1.05, caprabo: 1.0, dia: 1.03, bonpreu: 0.98 };
 /** Share of categories where the chain stocks the national brand. */
@@ -160,6 +166,7 @@ export function buildSampleData(now: Date = new Date()): SampleData {
         zone: ZONE[chain]!,
         lat: round(area.lat + Math.sin(angle) * 0.0025, 5),
         lng: round(area.lng + Math.cos(angle) * 0.0033, 5),
+        openingHours: SAMPLE_HOURS[chain],
       });
     });
   }

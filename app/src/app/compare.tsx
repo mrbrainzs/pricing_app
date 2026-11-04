@@ -4,6 +4,7 @@ import { useMemo, useState } from 'react';
 import { ActivityIndicator, Linking, Pressable, View } from 'react-native';
 
 import { itemNames } from '@/components/ListItemRow';
+import { OpenNowBadge } from '@/components/OpenNowBadge';
 import { sourceLabel, unitPriceLabel } from '@/components/format';
 import { todayLocal } from '@/components/shareLink';
 import { Badge, Banner, Button, Card, Chip, Divider, Row, Screen, T } from '@/components/ui';
@@ -70,6 +71,7 @@ function StoreCard({ ranking, rank, items }: { ranking: StoreBasket[]; rank: num
       </Row>
       <Row style={{ flexWrap: 'wrap' }} gap={space.xs}>
         {isBest ? <Badge label={t('best')} tone="primary" /> : null}
+        <OpenNowBadge hours={basket.store.openingHours} />
         {basket.flagged ? <Badge label={t('missingFlag')} tone="warn" /> : null}
         {basket.diffToNext !== null && basket.diffToNext > 0 ? <Badge label={t('cheaperThanNext', { amount: money(basket.diffToNext, lang) })} tone="good" /> : null}
         {basket.staleCount > 0 ? <Badge label={t('staleWarning', { n: basket.staleCount })} tone="warn" /> : null}
@@ -154,6 +156,7 @@ export default function CompareScreen() {
                   <View style={{ flex: 1 }}>
                     <T variant="heading">{t('buyHere')}: {store.store.name}</T>
                     <T variant="small">{km(store.distanceKm, lang)}</T>
+                    <OpenNowBadge hours={store.store.openingHours} />
                   </View>
                   <Button label={t('go')} onPress={() => openDirections(store)} compact variant="secondary" />
                 </Row>

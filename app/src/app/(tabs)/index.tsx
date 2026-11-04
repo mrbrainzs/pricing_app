@@ -4,6 +4,7 @@ import { useMemo, useState } from 'react';
 import { View } from 'react-native';
 
 import { ListItemRow } from '@/components/ListItemRow';
+import { WeeklyIndexCard } from '@/components/WeeklyIndexCard';
 import { Button, Chip, Input, Row, Screen, T } from '@/components/ui';
 import { APP_NAME } from '@/i18n';
 import { useApp } from '@/state/AppState';
@@ -44,6 +45,7 @@ export default function ListScreen() {
         <T variant="small" style={{ color: c.primary, fontWeight: '700' }}>{APP_NAME}</T>
         <T variant="title">{t('listTitle')}</T>
       </View>
+      <WeeklyIndexCard />
 
       <View style={{ gap: space.sm }}>
         <Row>
