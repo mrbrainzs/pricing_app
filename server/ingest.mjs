@@ -334,8 +334,8 @@ var CATEGORIES = [
     defaultSize: kg(0.5),
     names: { ca: "Iogurt natural", es: "Yogur natural", en: "Plain yogurt" },
     synonyms: ["iogurt", "iogurts", "yogur", "yogures", "yogurt", "yoghurt"],
-    include: ["yogur natural", "iogurt natural"],
-    exclude: ["bebible", "liquid", "liquido", "sabor"]
+    include: ["yogur natural", "iogurt natural", "yogur + natural$", "iogurt + natural$"],
+    exclude: ["bebible", "liquid", "liquido", "sabor", "griego", "grec", "azucarad", "ensucrat", "edulcorad"]
   },
   {
     id: "butter",
@@ -352,7 +352,8 @@ var CATEGORIES = [
     defaultSize: kg(0.25),
     names: { ca: "Formatge a llesques", es: "Queso en lonchas", en: "Sliced cheese" },
     synonyms: ["formatge", "queso", "cheese", "formatge de llesques"],
-    include: ["queso en lonchas", "queso lonchas", "lonchas de queso", "queso tierno en lonchas", "formatge a llesques", "formatge en llesques"]
+    include: ["queso en lonchas", "queso lonchas", "lonchas de queso", "queso + lonchas", "formatge a llesques", "formatge en llesques", "formatge + llesques"],
+    exclude: ["rallado", "ratllat", "sandwich"]
   },
   // Bakery and pantry
   {
@@ -451,7 +452,8 @@ var CATEGORIES = [
     defaultSize: kg(1),
     names: { ca: "Tom\xE0quet triturat", es: "Tomate triturado", en: "Crushed tomatoes" },
     synonyms: ["tomaquet de llauna", "tomate en lata", "tinned tomatoes", "canned tomatoes"],
-    include: ["tomate triturado", "tomaquet triturat"]
+    include: ["tomate triturado", "tomaquet triturat", "tomate + triturado", "tomaquet + triturat"],
+    exclude: ["cebolla", "ceba"]
   },
   {
     id: "tomato_fried",
@@ -567,7 +569,7 @@ var CATEGORIES = [
     defaultSize: kg(1),
     names: { ca: "Pit de pollastre", es: "Pechuga de pollo", en: "Chicken breast" },
     synonyms: ["pollastre", "pollo", "chicken", "pit pollastre"],
-    include: ["pechuga de pollo", "pechugas de pollo", "filetes de pechuga de pollo", "pit de pollastre", "filets de pit de pollastre"],
+    include: ["pechuga de pollo", "pechugas de pollo", "filetes de pechuga de pollo", "filete de pechuga de pollo", "finisimo de pechuga de pollo", "pit de pollastre", "filets de pit de pollastre", "filet de pit de pollastre"],
     exclude: ["empanad", "cocida", "asada", "lonchas", "fiambre", "nuggets", "rellena", "arrebossat", "cuit", "llesques", "pavo", "gall dindi"]
   },
   {
@@ -576,7 +578,7 @@ var CATEGORIES = [
     defaultSize: kg(0.5),
     names: { ca: "Carn picada", es: "Carne picada", en: "Minced meat" },
     synonyms: ["picada", "mince", "ground beef", "carne molida"],
-    include: ["carne picada", "picada de vacuno", "picada vacuno", "burger meat", "carn picada"]
+    include: ["carne picada", "picada de vacuno", "picada vacuno", "burger meat", "carn picada", "preparado de carne picada", "preparado de carne de vacuno", "preparado de carne burger meat"]
   },
   {
     id: "ham_cooked",
@@ -584,7 +586,7 @@ var CATEGORIES = [
     defaultSize: kg(0.25),
     names: { ca: "Pernil dol\xE7", es: "Jam\xF3n cocido", en: "Cooked ham" },
     synonyms: ["pernil", "jamon york", "york", "ham"],
-    include: ["jamon cocido", "pernil dolc", "pernil cuit"],
+    include: ["jamon cocido", "finisimo de jamon cocido", "pernil dolc", "pernil cuit"],
     exclude: ["croqueta", "pizza", "sandwich", "bocadillo", "empanad"]
   },
   // Drinks
@@ -633,7 +635,8 @@ var CATEGORIES = [
     defaultSize: ud(2),
     names: { ca: "Paper de cuina", es: "Papel de cocina", en: "Kitchen roll" },
     synonyms: ["paper cuina", "papel cocina", "paper towel"],
-    include: ["papel de cocina", "rollo de cocina", "paper de cuina"]
+    include: ["papel de cocina", "papel cocina", "rollo de cocina", "rollo papel cocina", "rollo de papel de cocina", "paper de cuina", "paper cuina"],
+    exclude: ["portarrollos", "portarotllos", "aluminio", "alumini"]
   },
   {
     id: "laundry_detergent",
@@ -650,8 +653,8 @@ var CATEGORIES = [
     defaultSize: l(1),
     names: { ca: "Rentaplats", es: "Lavavajillas a mano", en: "Washing-up liquid" },
     synonyms: ["fairy", "lavavajillas", "dish soap", "washing up liquid"],
-    include: ["lavavajillas a mano", "lavavajillas mano", "friegaplatos", "rentaplats a ma", "rentaplats"],
-    exclude: ["maquina", "pastillas", "capsulas", "maquina", "rentavaixelles", "pastilles"]
+    include: ["lavavajillas a mano", "lavavajillas mano", "lavavajillas$", "friegaplatos", "rentaplats a ma", "rentaplats"],
+    exclude: ["maquina", "pastillas", "capsulas", "rentavaixelles", "pastilles", "abrillantador", "sal$", "todo en", "polvo"]
   },
   // Personal care
   {
@@ -675,14 +678,17 @@ var CATEGORIES = [
 ];
 var CATEGORY_BY_ID = Object.fromEntries(CATEGORIES.map((c) => [c.id, c]));
 function phraseRegex(phrase, position) {
-  const whole = phrase.endsWith("$");
-  const p = normalize(whole ? phrase.slice(0, -1) : phrase).replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+  const [first, ...rest] = phrase.split(" + ");
+  const part = (ph) => {
+    const whole = ph.endsWith("$");
+    const p = normalize(whole ? ph.slice(0, -1) : ph).replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+    return `${p}${whole ? "(?= |$)" : ""}`;
+  };
   const prefix = position === "first" ? "^" : position === "start" ? "^(?:[^ ]+ )?" : "(?:^| )";
-  return new RegExp(`${prefix}${p}${whole ? "(?= |$)" : ""}`);
+  const after = rest.map((r) => `(?=.* ${part(r)})`).join("");
+  return new RegExp(`${prefix}${part(first)}${after}`);
 }
 var NOT_GROCERIES = [
-  "semilla",
-  "llavor",
   "mascota",
   "pienso",
   "comedero",
@@ -830,7 +836,7 @@ function parseBonareaPage(html) {
     const code = c.match(/data-identifier=["']?([0-9]{2}\*[0-9]+)/)?.[1];
     const name = c.match(/<div class=["']?text["']?><p>([^<]+)/)?.[1];
     if (!code || !name) continue;
-    const price = c.match(/<div class=["']?price["']?>\s*<span>\s*([\d.,]+)\s*€\/(u|kg|l)\.?\s*<\/span>/);
+    const price = c.match(/<div class=["']?price["']?>\s*<span>\s*([\d.,]+)\s*€\/(u|d|kg|l)\.?\s*<\/span>/);
     const priceLine = c.match(/<div class=["']?price["']?>([\s\S]*?)<\/div>/)?.[1];
     const unit = c.match(/<div class=["']?price["']?>[\s\S]*?<\/span>\s*\(\s*([\d.,]+)\s*€\/(kg|l|ml|u)\.?\s*\)/);
     const unitValue = unit ? euro(unit[1]) : null;
@@ -854,7 +860,7 @@ function bonareaSize(card) {
   const m = weight?.match(/^([\d.,]+)\s*([a-z]+)\.?$/i);
   if (m) {
     const amount = Number(m[1].includes(",") ? m[1].replace(/\./g, "").replace(",", ".") : m[1]);
-    const size = toSize(amount, m[2]);
+    const size = toSize(amount, m[2].toLowerCase() === "d" ? "dosis" : m[2]);
     if (size) return size;
   }
   return parseSize(card.name);
@@ -875,7 +881,7 @@ function cardToProduct(card) {
     isOwnBrand: own,
     categoryId: classifyProduct(card.name, known),
     // Sold by weight: the shelf price is for 1 kg (or 1 l), whatever the approximate piece weighs.
-    size: card.pricePer === "kg" || card.pricePer === "l" ? { amount: 1, unit: card.pricePer } : bonareaSize(card),
+    size: card.pricePer === "kg" || card.pricePer === "l" ? { amount: 1, unit: card.pricePer } : card.pricePer === "d" ? { amount: 12, unit: "unit" } : bonareaSize(card),
     imageUrl: card.imageUrl
   };
 }
@@ -884,6 +890,7 @@ function cardToPrice(card, size, observedAt) {
   const base = card.unitPrice ? UNIT_BASE[card.unitPrice.unit] : void 0;
   let unitPrice = null;
   if (card.pricePer === "kg" || card.pricePer === "l") unitPrice = card.price;
+  else if (card.pricePer === "d") unitPrice = card.unitPrice?.unit === "u" ? card.unitPrice.value : round(card.price / 12, 4);
   else if (card.unitPrice && base && (!size || size.unit === base)) unitPrice = card.unitPrice.value;
   else if (size) unitPrice = round(card.price / size.amount, 4);
   return {

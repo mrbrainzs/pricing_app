@@ -106,8 +106,8 @@ var CATEGORIES = [
     defaultSize: kg(0.5),
     names: { ca: "Iogurt natural", es: "Yogur natural", en: "Plain yogurt" },
     synonyms: ["iogurt", "iogurts", "yogur", "yogures", "yogurt", "yoghurt"],
-    include: ["yogur natural", "iogurt natural"],
-    exclude: ["bebible", "liquid", "liquido", "sabor"]
+    include: ["yogur natural", "iogurt natural", "yogur + natural$", "iogurt + natural$"],
+    exclude: ["bebible", "liquid", "liquido", "sabor", "griego", "grec", "azucarad", "ensucrat", "edulcorad"]
   },
   {
     id: "butter",
@@ -124,7 +124,8 @@ var CATEGORIES = [
     defaultSize: kg(0.25),
     names: { ca: "Formatge a llesques", es: "Queso en lonchas", en: "Sliced cheese" },
     synonyms: ["formatge", "queso", "cheese", "formatge de llesques"],
-    include: ["queso en lonchas", "queso lonchas", "lonchas de queso", "queso tierno en lonchas", "formatge a llesques", "formatge en llesques"]
+    include: ["queso en lonchas", "queso lonchas", "lonchas de queso", "queso + lonchas", "formatge a llesques", "formatge en llesques", "formatge + llesques"],
+    exclude: ["rallado", "ratllat", "sandwich"]
   },
   // Bakery and pantry
   {
@@ -223,7 +224,8 @@ var CATEGORIES = [
     defaultSize: kg(1),
     names: { ca: "Tom\xE0quet triturat", es: "Tomate triturado", en: "Crushed tomatoes" },
     synonyms: ["tomaquet de llauna", "tomate en lata", "tinned tomatoes", "canned tomatoes"],
-    include: ["tomate triturado", "tomaquet triturat"]
+    include: ["tomate triturado", "tomaquet triturat", "tomate + triturado", "tomaquet + triturat"],
+    exclude: ["cebolla", "ceba"]
   },
   {
     id: "tomato_fried",
@@ -339,7 +341,7 @@ var CATEGORIES = [
     defaultSize: kg(1),
     names: { ca: "Pit de pollastre", es: "Pechuga de pollo", en: "Chicken breast" },
     synonyms: ["pollastre", "pollo", "chicken", "pit pollastre"],
-    include: ["pechuga de pollo", "pechugas de pollo", "filetes de pechuga de pollo", "pit de pollastre", "filets de pit de pollastre"],
+    include: ["pechuga de pollo", "pechugas de pollo", "filetes de pechuga de pollo", "filete de pechuga de pollo", "finisimo de pechuga de pollo", "pit de pollastre", "filets de pit de pollastre", "filet de pit de pollastre"],
     exclude: ["empanad", "cocida", "asada", "lonchas", "fiambre", "nuggets", "rellena", "arrebossat", "cuit", "llesques", "pavo", "gall dindi"]
   },
   {
@@ -348,7 +350,7 @@ var CATEGORIES = [
     defaultSize: kg(0.5),
     names: { ca: "Carn picada", es: "Carne picada", en: "Minced meat" },
     synonyms: ["picada", "mince", "ground beef", "carne molida"],
-    include: ["carne picada", "picada de vacuno", "picada vacuno", "burger meat", "carn picada"]
+    include: ["carne picada", "picada de vacuno", "picada vacuno", "burger meat", "carn picada", "preparado de carne picada", "preparado de carne de vacuno", "preparado de carne burger meat"]
   },
   {
     id: "ham_cooked",
@@ -356,7 +358,7 @@ var CATEGORIES = [
     defaultSize: kg(0.25),
     names: { ca: "Pernil dol\xE7", es: "Jam\xF3n cocido", en: "Cooked ham" },
     synonyms: ["pernil", "jamon york", "york", "ham"],
-    include: ["jamon cocido", "pernil dolc", "pernil cuit"],
+    include: ["jamon cocido", "finisimo de jamon cocido", "pernil dolc", "pernil cuit"],
     exclude: ["croqueta", "pizza", "sandwich", "bocadillo", "empanad"]
   },
   // Drinks
@@ -405,7 +407,8 @@ var CATEGORIES = [
     defaultSize: ud(2),
     names: { ca: "Paper de cuina", es: "Papel de cocina", en: "Kitchen roll" },
     synonyms: ["paper cuina", "papel cocina", "paper towel"],
-    include: ["papel de cocina", "rollo de cocina", "paper de cuina"]
+    include: ["papel de cocina", "papel cocina", "rollo de cocina", "rollo papel cocina", "rollo de papel de cocina", "paper de cuina", "paper cuina"],
+    exclude: ["portarrollos", "portarotllos", "aluminio", "alumini"]
   },
   {
     id: "laundry_detergent",
@@ -422,8 +425,8 @@ var CATEGORIES = [
     defaultSize: l(1),
     names: { ca: "Rentaplats", es: "Lavavajillas a mano", en: "Washing-up liquid" },
     synonyms: ["fairy", "lavavajillas", "dish soap", "washing up liquid"],
-    include: ["lavavajillas a mano", "lavavajillas mano", "friegaplatos", "rentaplats a ma", "rentaplats"],
-    exclude: ["maquina", "pastillas", "capsulas", "maquina", "rentavaixelles", "pastilles"]
+    include: ["lavavajillas a mano", "lavavajillas mano", "lavavajillas$", "friegaplatos", "rentaplats a ma", "rentaplats"],
+    exclude: ["maquina", "pastillas", "capsulas", "rentavaixelles", "pastilles", "abrillantador", "sal$", "todo en", "polvo"]
   },
   // Personal care
   {
