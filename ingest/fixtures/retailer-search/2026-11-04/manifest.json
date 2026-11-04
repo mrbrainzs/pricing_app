@@ -1,0 +1,37 @@
+[
+  {
+    "file": "bonarea-leche.html",
+    "requestedUrl": "https://www.bonarea-online.com/es/shop/find?searchWords=leche",
+    "finalUrl": "https://www.bonarea-online.com/es/shop/find?searchWords=leche",
+    "capturedAt": "2026-11-04T20:06:46.575745+00:00",
+    "captureHost": "204.168.165.248",
+    "httpStatus": 200,
+    "contentType": "text/html",
+    "bytes": 821162,
+    "sha256": "b9751e86deb03b763b8f1c90ae2e9e9e410ebe2ee0f121d325dfc2f2bad934d1",
+    "title": "bonÀrea compra online | Directo del Campo",
+    "redactedFields": 1,
+    "currencySymbolCount": 919,
+    "dataTestAttributes": [],
+    "scriptIds": []
+  },
+  {
+    "file": "bonpreu-llet.html",
+    "requestedUrl": "https://www.compraonline.bonpreuesclat.cat/search?q=llet",
+    "finalUrl": "https://www.compraonline.bonpreuesclat.cat/search?q=llet",
+    "capturedAt": "2026-11-04T20:09:57.844Z",
+    "captureMethod": "anonymous browser DOM after using public search",
+    "directServerHttpStatus": 403,
+    "title": "Resultats de la cerca per a llet - BonpreuEsclat online El teu supermercat per comprar online",
+    "bytes": 200349,
+    "sha256": "0c31d34316d2cc5fe6ef20e47b058fa062975426a6073ba7cc41003c2299c7f7",
+    "redactedFields": 15,
+    "visibleProductLinks": [
+      "/products/dolce-gusto-càpsules-de-cafè-espresso-intens/49637",
+      "/products/dolce-gusto-càpsules-de-cafè-amb-llet/49644",
+      "/products/starbucks-càpsules-de-cafè-espresso-roast-intensitat-11/25833"
+    ],
+    "currencySymbolCount": 10,
+    "limitation": "Anonymous search displayed three featured product cards; this is a partial search-page fixture, not the full milk catalogue."
+  }
+]
