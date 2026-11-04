@@ -28,7 +28,8 @@ export interface Product {
   size: Size | null;
 }
 
-export type PriceSource = 'online' | 'receipt' | 'leaflet';
+/** 'sample' marks made-up development data; the app labels it clearly. */
+export type PriceSource = 'online' | 'receipt' | 'leaflet' | 'sample';
 
 export interface PriceObservation {
   productId: string;
