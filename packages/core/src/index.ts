@@ -12,3 +12,6 @@ export * from './priceLabel';
 export * from './geo';
 export * from './compare';
 export * from './sample';
+export * from './madridTime';
+export * from './openingHours';
+export * from './basketIndex';

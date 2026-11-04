@@ -12,6 +12,8 @@
 - **Basket comparison (F4):** the nearest store of each chain, ranked by what your list costs there, with distance, items found and the gap to the next store. Optional "up to 2 stores" mode, shown only when it saves your minimum (default €3). Directions and share.
 - **Product search (F2)** in any of the three languages, plus a **product page (F5)**: price per chain, unit prices, own-brand equivalents, good / normal / high price label, 90-day history (F6).
 - **Freshness labels (F8)** on every price: source and time. Prices older than 3 days are flagged; older than 7 days are dropped.
+- **Weekly basket index (F12):** every Monday at 07:00 the same 20 everyday items are priced at each chain. The List tab shows the ranking and the change since last week; tapping it shows every item per chain. Chains missing more than 20% of the items are listed but not ranked.
+- **Open now:** each store in the comparison shows "Open now", "Closed · opens 09:00" or "Hours unknown", from its OpenStreetMap opening hours in Barcelona time (public holidays included; hours we can't read are never guessed).
 
 The deployed app reads real prices from a **local SQLite database** through a read-only API. The daily importer runs on the same server. When no recent prices are available, explicitly labelled sample data is shown instead. Prices are imported for **Mercadona**, **Consum** (added as a seventh chain: open catalogue, many shops around Barcelona) and **bonÀrea**. Store locations come from OpenStreetMap, refreshed weekly by the same import; chains without prices yet are named in the app instead of ranked. DIA and Bonpreu/Esclat refuse automated requests (HTTP 403).
 

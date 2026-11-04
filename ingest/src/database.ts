@@ -2,7 +2,10 @@ import type { DatabaseSync as SqliteDatabase } from 'node:sqlite';
 import { createRequire } from 'node:module';
 import { mkdirSync } from 'node:fs';
 import { dirname } from 'node:path';
-import { CATEGORIES, CHAINS, type PriceObservation, type Product, type Store } from '@pricing/core';
+import {
+  CATEGORIES, CHAINS, INDEX_BASKET, indexMoment, ONLINE_EXPIRES_AFTER_DAYS, previousIndexMoment, weeklyBasketIndex,
+  type PriceObservation, type Product, type Store, type WeeklyIndex,
+} from '@pricing/core';
 
 const { DatabaseSync } = createRequire(import.meta.url)('node:sqlite') as typeof import('node:sqlite');
 
@@ -109,4 +112,45 @@ export function storeZones(db: SqliteDatabase, chain: Store['chain']): Map<strin
   const rows = db.prepare(`SELECT json_extract(data, '$.zone') AS zone, MIN(json_extract(data, '$.postalCode')) AS postal
     FROM stores WHERE json_extract(data, '$.chain') = ? AND json_extract(data, '$.postalCode') IS NOT NULL GROUP BY zone`).all(chain);
   return new Map(rows.map((r) => [r.zone as string, r.postal as string]));
+}
+
+/** Mercadona prices differ by warehouse: the index uses the one with the most stores. */
+export function mainMercadonaZone(db: SqliteDatabase): string {
+  const row = db.prepare(`SELECT json_extract(data, '$.zone') AS zone, COUNT(*) AS n FROM stores
+    WHERE json_extract(data, '$.chain') = 'mercadona' AND json_extract(data, '$.zone') IS NOT NULL
+    GROUP BY zone ORDER BY n DESC, zone LIMIT 1`).get();
+  return (row?.zone as string | undefined) ?? 'bcn1';
+}
+
+/**
+ * F12 weekly basket index, read-only: this week's (prices as of the latest Monday 07:00
+ * Barcelona time, each the latest observation at or before it and at most 7 days old) and
+ * last week's, with the change per chain. `previous` is null until there is a week of data.
+ */
+export function weeklyIndex(db: SqliteDatabase, now = new Date()): WeeklyIndex {
+  const at = indexMoment(now);
+  const from = new Date(previousIndexMoment(at).getTime() - ONLINE_EXPIRES_AFTER_DAYS * 86_400_000).toISOString();
+  const mercadona = mainMercadonaZone(db);
+  const basket = [...INDEX_BASKET];
+  const products = db.prepare(`SELECT data FROM products
+    WHERE json_extract(data, '$.categoryId') IN (${basket.map(() => '?').join(',')})`).all(...basket)
+    .map(r => JSON.parse(r.data as string) as Product);
+  const ids = products.map(p => p.id);
+  const prices: PriceObservation[] = [];
+  // Chunked to stay well below SQLite's limit on query parameters.
+  for (let i = 0; i < ids.length; i += 500) {
+    const chunk = ids.slice(i, i + 500);
+    const rows = db.prepare(`SELECT * FROM price_observations
+      WHERE product_id IN (${chunk.map(() => '?').join(',')}) AND observed_at >= ? AND observed_at <= ?
+        AND (chain <> 'mercadona' OR zone = ?)`).all(...chunk, from, at.toISOString(), mercadona);
+    for (const r of rows) {
+      prices.push({
+        productId: r.product_id as string, chain: r.chain as PriceObservation['chain'],
+        zone: r.zone as string, price: r.price as number, unitPrice: r.unit_price as number | null,
+        promotion: (r.promotion as string | null) ?? undefined,
+        observedAt: r.observed_at as string, source: r.source as PriceObservation['source'],
+      });
+    }
+  }
+  return weeklyBasketIndex({ products, prices, now, zones: { mercadona } });
 }

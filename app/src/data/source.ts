@@ -1,4 +1,4 @@
-import { buildSampleData, type PriceObservation, type PricePoint, type Product, type Store } from '@pricing/core';
+import { buildSampleData, sampleWeeklyIndex, type PriceObservation, type PricePoint, type Product, type Store, type WeeklyIndex } from '@pricing/core';
 
 /** Everything the app needs to compare prices in the user's area. */
 export interface Catalog {
@@ -13,6 +13,8 @@ export interface Catalog {
 export interface DataSource {
   load(): Promise<Catalog>;
   history(productId: string): Promise<PricePoint[]>;
+  /** F12 weekly basket index; null when it can't be loaded. Call after load(), which decides real vs sample data. */
+  index(): Promise<WeeklyIndex | null>;
 }
 
 /**
@@ -20,12 +22,17 @@ export interface DataSource {
  */
 export function sampleSource(now = new Date()): DataSource {
   const data = buildSampleData(now);
+  let index: WeeklyIndex | null = null;
   return {
     async load() {
       return { stores: data.stores, products: data.products, prices: data.prices, isSample: true };
     },
     async history(productId) {
       return data.history(productId);
+    },
+    async index() {
+      index ??= sampleWeeklyIndex(data, now);
+      return index;
     },
   };
 }
@@ -53,6 +60,14 @@ export function apiSource(baseUrl: string): DataSource {
       if (usingSample) return sample.history(productId);
       try { return await get<PricePoint[]>(`/history/${encodeURIComponent(productId)}`); }
       catch { return []; }
+    },
+    async index() {
+      // Sample index only alongside the sample catalogue; real data never falls back to samples.
+      if (usingSample) return sample.index();
+      try {
+        const data = await get<WeeklyIndex>('/index');
+        return Array.isArray(data?.current?.chains) ? data : null;
+      } catch { return null; }
     },
   };
 }
