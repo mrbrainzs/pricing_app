@@ -171,6 +171,20 @@ describe('product classification', () => {
     ['Lavavajillas máquina todo en 1', null],
     ['Mano de mortero 30357', null],
     ['Pinchos de pechuga de pollo 4-5 u.', null],
+    // From the live re-classification report (5,915 products, Nov 2026).
+    ['Cogollos de lechuga', 'lettuce'],
+    ['Tomates cherry en rama Dulcita', 'tomatoes'],
+    ['Zumo de naranja recién exprimido Hacendado', 'orange_juice'],
+    ['Palomitas mantequilla para microondas', null],
+    ['Tartaleta Mantequilla 16 Unidades 112 Gr', null],
+    ['Limpiamáquinas lavavajillas líquido Bosque Verde', null],
+    ['Ambientador lavavajillas Limón Bosque Verde', null],
+    ['Pechuga de Pollo al Natural Pack de 2 2 x 52 Gr', null],
+    ['Tomate natural Cirio especial pasta', null],
+    ['Golosinas Mix azúcar Hacendado', null],
+    ['Pistacho tostado Hacendado con sal', null],
+    ['Macarrón al huevo Hacendado', 'pasta'],
+    ['Tomate frito Hacendado con aceite de oliva', 'tomato_fried'],
   ])('real-world name %s -> %s', (name, expected) => {
     expect(classifyProduct(name)).toBe(expected);
   });

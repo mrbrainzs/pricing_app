@@ -31,9 +31,9 @@ export const MAX_UNIT_PRICE: Record<string, number> = {
   milk: 4, eggs: 1.2, yogurt_plain: 12, butter: 40, cheese_sliced: 45, bread_sliced: 12,
   rice: 12, pasta: 12, olive_oil_ev: 25, olive_oil: 18, sunflower_oil: 8, coffee_ground: 50,
   sugar: 8, flour: 8, salt: 10, tomato_crushed: 8, tomato_fried: 10, tuna_canned: 60,
-  chickpeas: 10, lentils: 12, tomatoes: 12, bananas: 6, apples: 8, oranges: 6, potatoes: 6,
-  onions: 8, carrots: 6, lettuce: 4, chicken_breast: 25, minced_meat: 25, ham_cooked: 45,
-  water: 3, beer: 12, orange_juice: 8, toilet_paper: 1.5, kitchen_roll: 4, laundry_detergent: 1.2,
+  chickpeas: 10, lentils: 12, tomatoes: 18, bananas: 6, apples: 8, oranges: 6, potatoes: 6,
+  onions: 8, carrots: 6, lettuce: 4, chicken_breast: 15, minced_meat: 25, ham_cooked: 45,
+  water: 3, beer: 12, orange_juice: 12, toilet_paper: 1.5, kitchen_roll: 4, laundry_detergent: 1.2,
   dish_soap: 15, shampoo: 60, toothpaste: 150,
 };
 
@@ -81,7 +81,7 @@ export const CATEGORIES: Category[] = [
     names: { ca: 'Mantega', es: 'Mantequilla', en: 'Butter' },
     synonyms: [],
     include: ['mantequilla', 'mantega'],
-    exclude: ['galleta', 'pasta de', 'bollo', 'croissant', 'sabor', 'cacahuete', 'crema de', 'palmera', 'magdalena', 'cacauet'],
+    exclude: ['galleta', 'pasta de', 'bollo', 'croissant', 'sabor', 'cacahuete', 'crema de', 'palmera', 'magdalena', 'cacauet', 'palomitas', 'tartaleta', 'hojaldre', 'rosquilla', 'trenza', 'untar'],
   },
   {
     id: 'cheese_sliced', group: 'dairy', defaultSize: kg(0.25),
@@ -200,7 +200,7 @@ export const CATEGORIES: Category[] = [
     names: { ca: 'Tomàquets', es: 'Tomates', en: 'Tomatoes' },
     synonyms: ['tomaquet', 'tomate', 'tomato'],
     include: ['tomate', 'tomaquet'],
-    exclude: ['triturado', 'triturat', 'frito', 'fregit', 'concentrado', 'salsa', 'seco', 'ketchup', 'zumo', 'pelado', 'gazpacho', 'natural entero', 'lata', 'untar', 'sec', 'suc', 'tamizado', 'rallado', 'ratllat', 'deshidratado'],
+    exclude: ['natural', 'triturado', 'triturat', 'frito', 'fregit', 'concentrado', 'salsa', 'seco', 'ketchup', 'zumo', 'pelado', 'gazpacho', 'natural entero', 'lata', 'untar', 'sec', 'suc', 'tamizado', 'rallado', 'ratllat', 'deshidratado'],
   },
   {
     id: 'bananas', group: 'produce', defaultSize: kg(1),
@@ -248,7 +248,7 @@ export const CATEGORIES: Category[] = [
     id: 'lettuce', group: 'produce', defaultSize: ud(1),
     names: { ca: 'Enciam', es: 'Lechuga', en: 'Lettuce' },
     synonyms: ['enciam iceberg', 'lechuga iceberg', 'lettuce'],
-    include: ['lechuga', 'enciam'],
+    include: ['lechuga', 'enciam', 'cogollo', 'corazones de lechuga', 'corazon de lechuga', 'corazones lechuga', 'cors d enciam'],
     exclude: ['ensalada', 'mezcla', 'brotes', 'amanida', 'barreja'],
   },
   // Meat and fish
@@ -257,7 +257,7 @@ export const CATEGORIES: Category[] = [
     names: { ca: 'Pit de pollastre', es: 'Pechuga de pollo', en: 'Chicken breast' },
     synonyms: ['pollastre', 'pollo', 'chicken', 'pit pollastre'],
     include: ['pechuga de pollo', 'pechugas de pollo', 'filetes de pechuga de pollo', 'filete de pechuga de pollo', 'finisimo de pechuga de pollo', 'pit de pollastre', 'filets de pit de pollastre', 'filet de pit de pollastre'],
-    exclude: ['empanad', 'cocida', 'asada', 'lonchas', 'fiambre', 'nuggets', 'rellena', 'arrebossat', 'cuit', 'llesques', 'pavo', 'gall dindi'],
+    exclude: ['empanad', 'cocida', 'asada', 'lonchas', 'fiambre', 'nuggets', 'rellena', 'arrebossat', 'cuit', 'llesques', 'pavo', 'gall dindi', 'al natural', 'tiras'],
   },
   {
     id: 'minced_meat', group: 'meat_fish', defaultSize: kg(0.5),
@@ -321,7 +321,7 @@ export const CATEGORIES: Category[] = [
     names: { ca: 'Rentaplats', es: 'Lavavajillas a mano', en: 'Washing-up liquid' },
     synonyms: ['fairy', 'lavavajillas', 'dish soap', 'washing up liquid'],
     include: ['lavavajillas a mano', 'lavavajillas mano', 'lavavajillas$', 'friegaplatos', 'rentaplats a ma', 'rentaplats'],
-    exclude: ['maquina', 'pastillas', 'capsulas', 'rentavaixelles', 'pastilles', 'abrillantador', 'sal$', 'todo en', 'polvo'],
+    exclude: ['maquina', 'pastillas', 'capsulas', 'rentavaixelles', 'pastilles', 'abrillantador', 'sal$', 'todo en', 'polvo', 'limpiamaquinas', 'ambientador'],
   },
   // Personal care
   {
