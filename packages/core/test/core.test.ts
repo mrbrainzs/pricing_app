@@ -128,6 +128,28 @@ describe('product classification', () => {
     ['Azúcar moreno de caña 1 kg', 'sugar'],
     ['Naranjas para zumo 4 kg', 'oranges'],
     ['Leche entera Pascual paq. de 6 brics', 'milk'],
+    // From the first live bonÀrea run (Nov 2026): real products that were being missed…
+    ['Queso tierno 100% vaca lonchas', 'cheese_sliced'],
+    ['Queso cheddar lonchas', 'cheese_sliced'],
+    ['Tomate natural triturado', 'tomato_crushed'],
+    ['Tomate natural Apis triturado extra', 'tomato_crushed'],
+    ['Filete de pechuga de pollo blanco', 'chicken_breast'],
+    ['Finísimo de jamón cocido', 'ham_cooked'],
+    ['Preparado de carne de vacuno', 'minced_meat'],
+    ['Rollo papel cocina Colhogar Maxi', 'kitchen_roll'],
+    ['Lavavajillas verde', 'dish_soap'],
+    ['Mistol lavavajillas balsam aloe', 'dish_soap'],
+    ['Yogur activia Danone natural 4 u. de 120 g', 'yogurt_plain'],
+    ['Pan de molde 15 cereales y semillas', 'bread_sliced'],
+    ['Huevos XL rubio estuchados', 'eggs'],
+    // …and lookalikes that must stay out.
+    ['Yogur griego natural paq. 4 u.', null],
+    ['Tomate natural Apis triturado con cebolla', null],
+    ['Pechuga de pollo amarillo fileteado empanado', null],
+    ['Portarrollos papel cocina 2310', null],
+    ['Lavavajillas máquina todo en 1', null],
+    ['Mano de mortero 30357', null],
+    ['Pinchos de pechuga de pollo 4-5 u.', null],
   ])('real-world name %s -> %s', (name, expected) => {
     expect(classifyProduct(name)).toBe(expected);
   });

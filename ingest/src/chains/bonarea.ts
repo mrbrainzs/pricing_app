@@ -28,9 +28,9 @@ export interface BonareaCard {
   imageUrl?: string;
   name: string;
   weight?: string;
-  /** Shelf price: per item ("5,34 €/u."), or per kg / litre for goods sold by weight. */
+  /** Shelf price: per item ("5,34 €/u."), per dozen ("2,80 €/d.", eggs), or per kg / litre. */
   price: number | null;
-  pricePer: 'u' | 'kg' | 'l' | null;
+  pricePer: 'u' | 'd' | 'kg' | 'l' | null;
   /** The price line as shown, for diagnostics when it can't be read. */
   priceText?: string;
   unitPrice: { value: number; unit: string } | null;
@@ -62,7 +62,7 @@ export function parseBonareaPage(html: string): BonareaCard[] {
     const code = c.match(/data-identifier=["']?([0-9]{2}\*[0-9]+)/)?.[1];
     const name = c.match(/<div class=["']?text["']?><p>([^<]+)/)?.[1];
     if (!code || !name) continue;
-    const price = c.match(/<div class=["']?price["']?>\s*<span>\s*([\d.,]+)\s*€\/(u|kg|l)\.?\s*<\/span>/);
+    const price = c.match(/<div class=["']?price["']?>\s*<span>\s*([\d.,]+)\s*€\/(u|d|kg|l)\.?\s*<\/span>/);
     const priceLine = c.match(/<div class=["']?price["']?>([\s\S]*?)<\/div>/)?.[1];
     const unit = c.match(/<div class=["']?price["']?>[\s\S]*?<\/span>\s*\(\s*([\d.,]+)\s*€\/(kg|l|ml|u)\.?\s*\)/);
     const unitValue = unit ? euro(unit[1]!) : null;
@@ -91,7 +91,8 @@ export function bonareaSize(card: Pick<BonareaCard, 'weight' | 'name'>): Size | 
   const m = weight?.match(/^([\d.,]+)\s*([a-z]+)\.?$/i);
   if (m) {
     const amount = Number(m[1]!.includes(',') ? m[1]!.replace(/\./g, '').replace(',', '.') : m[1]);
-    const size = toSize(amount, m[2]!);
+    // "40 d." on detergents means 40 doses (washes).
+    const size = toSize(amount, m[2]!.toLowerCase() === 'd' ? 'dosis' : m[2]!);
     if (size) return size;
   }
   return parseSize(card.name);
@@ -120,7 +121,9 @@ export function cardToProduct(card: BonareaCard): ScrapedProduct {
     isOwnBrand: own,
     categoryId: classifyProduct(card.name, known),
     // Sold by weight: the shelf price is for 1 kg (or 1 l), whatever the approximate piece weighs.
-    size: card.pricePer === 'kg' || card.pricePer === 'l' ? { amount: 1, unit: card.pricePer } : bonareaSize(card),
+    size: card.pricePer === 'kg' || card.pricePer === 'l'
+      ? { amount: 1, unit: card.pricePer }
+      : card.pricePer === 'd' ? { amount: 12, unit: 'unit' } : bonareaSize(card),
     imageUrl: card.imageUrl,
   };
 }
@@ -130,6 +133,7 @@ export function cardToPrice(card: BonareaCard, size: Size | null, observedAt: st
   const base = card.unitPrice ? UNIT_BASE[card.unitPrice.unit] : undefined;
   let unitPrice: number | null = null;
   if (card.pricePer === 'kg' || card.pricePer === 'l') unitPrice = card.price;
+  else if (card.pricePer === 'd') unitPrice = card.unitPrice?.unit === 'u' ? card.unitPrice.value : round(card.price / 12, 4);
   else if (card.unitPrice && base && (!size || size.unit === base)) unitPrice = card.unitPrice.value;
   else if (size) unitPrice = round(card.price / size.amount, 4);
   return {

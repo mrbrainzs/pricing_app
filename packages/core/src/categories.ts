@@ -50,8 +50,8 @@ export const CATEGORIES: Category[] = [
     id: 'yogurt_plain', group: 'dairy', defaultSize: kg(0.5),
     names: { ca: 'Iogurt natural', es: 'Yogur natural', en: 'Plain yogurt' },
     synonyms: ['iogurt', 'iogurts', 'yogur', 'yogures', 'yogurt', 'yoghurt'],
-    include: ['yogur natural', 'iogurt natural'],
-    exclude: ['bebible', 'liquid', 'liquido', 'sabor'],
+    include: ['yogur natural', 'iogurt natural', 'yogur + natural$', 'iogurt + natural$'],
+    exclude: ['bebible', 'liquid', 'liquido', 'sabor', 'griego', 'grec', 'azucarad', 'ensucrat', 'edulcorad'],
   },
   {
     id: 'butter', group: 'dairy', defaultSize: kg(0.25),
@@ -64,7 +64,8 @@ export const CATEGORIES: Category[] = [
     id: 'cheese_sliced', group: 'dairy', defaultSize: kg(0.25),
     names: { ca: 'Formatge a llesques', es: 'Queso en lonchas', en: 'Sliced cheese' },
     synonyms: ['formatge', 'queso', 'cheese', 'formatge de llesques'],
-    include: ['queso en lonchas', 'queso lonchas', 'lonchas de queso', 'queso tierno en lonchas', 'formatge a llesques', 'formatge en llesques'],
+    include: ['queso en lonchas', 'queso lonchas', 'lonchas de queso', 'queso + lonchas', 'formatge a llesques', 'formatge en llesques', 'formatge + llesques'],
+    exclude: ['rallado', 'ratllat', 'sandwich'],
   },
   // Bakery and pantry
   {
@@ -141,7 +142,8 @@ export const CATEGORIES: Category[] = [
     id: 'tomato_crushed', group: 'pantry', defaultSize: kg(1),
     names: { ca: 'Tomàquet triturat', es: 'Tomate triturado', en: 'Crushed tomatoes' },
     synonyms: ['tomaquet de llauna', 'tomate en lata', 'tinned tomatoes', 'canned tomatoes'],
-    include: ['tomate triturado', 'tomaquet triturat'],
+    include: ['tomate triturado', 'tomaquet triturat', 'tomate + triturado', 'tomaquet + triturat'],
+    exclude: ['cebolla', 'ceba'],
   },
   {
     id: 'tomato_fried', group: 'pantry', defaultSize: kg(1),
@@ -231,20 +233,20 @@ export const CATEGORIES: Category[] = [
     id: 'chicken_breast', group: 'meat_fish', defaultSize: kg(1),
     names: { ca: 'Pit de pollastre', es: 'Pechuga de pollo', en: 'Chicken breast' },
     synonyms: ['pollastre', 'pollo', 'chicken', 'pit pollastre'],
-    include: ['pechuga de pollo', 'pechugas de pollo', 'filetes de pechuga de pollo', 'pit de pollastre', 'filets de pit de pollastre'],
+    include: ['pechuga de pollo', 'pechugas de pollo', 'filetes de pechuga de pollo', 'filete de pechuga de pollo', 'finisimo de pechuga de pollo', 'pit de pollastre', 'filets de pit de pollastre', 'filet de pit de pollastre'],
     exclude: ['empanad', 'cocida', 'asada', 'lonchas', 'fiambre', 'nuggets', 'rellena', 'arrebossat', 'cuit', 'llesques', 'pavo', 'gall dindi'],
   },
   {
     id: 'minced_meat', group: 'meat_fish', defaultSize: kg(0.5),
     names: { ca: 'Carn picada', es: 'Carne picada', en: 'Minced meat' },
     synonyms: ['picada', 'mince', 'ground beef', 'carne molida'],
-    include: ['carne picada', 'picada de vacuno', 'picada vacuno', 'burger meat', 'carn picada'],
+    include: ['carne picada', 'picada de vacuno', 'picada vacuno', 'burger meat', 'carn picada', 'preparado de carne picada', 'preparado de carne de vacuno', 'preparado de carne burger meat'],
   },
   {
     id: 'ham_cooked', group: 'meat_fish', defaultSize: kg(0.25),
     names: { ca: 'Pernil dolç', es: 'Jamón cocido', en: 'Cooked ham' },
     synonyms: ['pernil', 'jamon york', 'york', 'ham'],
-    include: ['jamon cocido', 'pernil dolc', 'pernil cuit'],
+    include: ['jamon cocido', 'finisimo de jamon cocido', 'pernil dolc', 'pernil cuit'],
     exclude: ['croqueta', 'pizza', 'sandwich', 'bocadillo', 'empanad'],
   },
   // Drinks
@@ -281,7 +283,8 @@ export const CATEGORIES: Category[] = [
     id: 'kitchen_roll', group: 'household', defaultSize: ud(2),
     names: { ca: 'Paper de cuina', es: 'Papel de cocina', en: 'Kitchen roll' },
     synonyms: ['paper cuina', 'papel cocina', 'paper towel'],
-    include: ['papel de cocina', 'rollo de cocina', 'paper de cuina'],
+    include: ['papel de cocina', 'papel cocina', 'rollo de cocina', 'rollo papel cocina', 'rollo de papel de cocina', 'paper de cuina', 'paper cuina'],
+    exclude: ['portarrollos', 'portarotllos', 'aluminio', 'alumini'],
   },
   {
     id: 'laundry_detergent', group: 'household', defaultSize: ud(40),
@@ -294,8 +297,8 @@ export const CATEGORIES: Category[] = [
     id: 'dish_soap', group: 'household', defaultSize: l(1),
     names: { ca: 'Rentaplats', es: 'Lavavajillas a mano', en: 'Washing-up liquid' },
     synonyms: ['fairy', 'lavavajillas', 'dish soap', 'washing up liquid'],
-    include: ['lavavajillas a mano', 'lavavajillas mano', 'friegaplatos', 'rentaplats a ma', 'rentaplats'],
-    exclude: ['maquina', 'pastillas', 'capsulas', 'maquina', 'rentavaixelles', 'pastilles'],
+    include: ['lavavajillas a mano', 'lavavajillas mano', 'lavavajillas$', 'friegaplatos', 'rentaplats a ma', 'rentaplats'],
+    exclude: ['maquina', 'pastillas', 'capsulas', 'rentavaixelles', 'pastilles', 'abrillantador', 'sal$', 'todo en', 'polvo'],
   },
   // Personal care
   {
@@ -333,15 +336,21 @@ interface CompiledRule {
  * match anywhere. A trailing "$" requires a whole word ("azucar$" skips "azucarado").
  */
 function phraseRegex(phrase: string, position: 'first' | 'start' | 'anywhere'): RegExp {
-  const whole = phrase.endsWith('$');
-  const p = normalize(whole ? phrase.slice(0, -1) : phrase).replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+  // "queso + lonchas": the first part where the position rule says, the rest anywhere after it.
+  const [first, ...rest] = phrase.split(' + ');
+  const part = (ph: string) => {
+    const whole = ph.endsWith('$');
+    const p = normalize(whole ? ph.slice(0, -1) : ph).replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+    return `${p}${whole ? '(?= |$)' : ''}`;
+  };
   const prefix = position === 'first' ? '^' : position === 'start' ? '^(?:[^ ]+ )?' : '(?:^| )';
-  return new RegExp(`${prefix}${p}${whole ? '(?= |$)' : ''}`);
+  const after = rest.map((r) => `(?=.* ${part(r)})`).join('');
+  return new RegExp(`${prefix}${part(first!)}${after}`);
 }
 
 /** Never groceries we compare: seeds, pet food, sun lotion, body care, baby formula. */
 const NOT_GROCERIES = [
-  'semilla', 'llavor', 'mascota', 'pienso', 'comedero', 'gato$', 'gatos$', 'gat$', 'perro$', 'perros$', 'gos$',
+  'mascota', 'pienso', 'comedero', 'gato$', 'gatos$', 'gat$', 'perro$', 'perros$', 'gos$',
   'aftersun', 'solar$', 'sun$', 'spf', 'corporal', 'body milk', 'desmaquillante', 'juguete', 'maceta',
   'leche de continuacion', 'leche continuacion', 'leche inicio', 'leche de inicio', 'llet de continuacio',
 ];

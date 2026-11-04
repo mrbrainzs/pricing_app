@@ -1,0 +1,19 @@
+name: Catalogue report
+# Read-only quality check of the live catalogue: coverage per chain and item, median
+# unit prices, suspicious prices and price ages. Runs after the daily import, or by hand.
+on:
+  schedule:
+    - cron: '45 6 * * *' # 07:45 / 08:45 Madrid, after the 05:30 import
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  report:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - run: node scripts/catalog-report.mjs https://quinsuper.trottedmedia.com/api/catalog

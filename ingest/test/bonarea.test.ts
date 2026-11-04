@@ -80,6 +80,24 @@ describe('bonÀrea goods sold by weight', () => {
   });
 });
 
+describe('bonÀrea eggs and detergent (formats from the first live run)', () => {
+  const card = (name: string, weight: string, priceHtml: string, code = '13*0888') =>
+    `<div class="block-product block-product-shopping none" id=liArticle0><a data-identifier=${code} data-friendly=https://www.bonarea-online.com/online/producto/x/13_0888 class=article-link><div class=text><p>${name}<div class=weight>${weight}</div></div></a><div class=mt-auto><div class=price>${priceHtml}</div></div></div>`;
+
+  it('reads egg prices per dozen', () => {
+    const [eggs] = parseBonareaPage(card('Huevos L rubio estuchado', '', '<span>2,80 €/d.</span> (0,23 €/u.)'));
+    expect(eggs).toMatchObject({ price: 2.8, pricePer: 'd' });
+    const product = cardToProduct(eggs!);
+    expect(product).toMatchObject({ categoryId: 'eggs', size: { amount: 12, unit: 'unit' } });
+    expect(cardToPrice(eggs!, product.size, 'x')).toMatchObject({ price: 2.8, unitPrice: 0.23 });
+  });
+
+  it('reads detergent sizes in doses', () => {
+    const [det] = parseBonareaPage(card('Oro detergente líquido Aloe Vera', '40 d.', '<span>6,95 €/u.</span>'));
+    expect(cardToProduct(det!)).toMatchObject({ categoryId: 'laundry_detergent', size: { amount: 40, unit: 'unit' } });
+  });
+});
+
 describe('bonÀrea parsing details', () => {
   it.each([
     ['6 l', { amount: 6, unit: 'l' }],
@@ -106,8 +124,9 @@ describe('bonÀrea parsing details', () => {
     const logs: string[] = [];
     const result = await scrapeBonarea(new PoliteClient({ delayMs: 0 }), { terms: ['leche', 'xyz'], log: (m) => logs.push(m) });
     vi.unstubAllGlobals();
-    expect(result.products).toHaveLength(34);
-    expect(result.prices).toHaveLength(34);
+    // 28 milks, 3 lettuces, 5 plain yogurts (incl. "Yogur activia Danone natural").
+    expect(result.products).toHaveLength(36);
+    expect(result.prices).toHaveLength(36);
     expect(urls[0]).toBe('https://www.bonarea-online.com/es/shop/find?searchWords=leche');
     expect(logs.at(-1)).toMatch(/1 searches returned no product cards/);
   });
