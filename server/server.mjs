@@ -62,6 +62,15 @@ var CHAINS = {
     online: true,
     singlePriceZone: true
   },
+  consum: {
+    id: "consum",
+    name: "Consum",
+    color: "#F39200",
+    ownBrands: ["Consum"],
+    online: true,
+    // The online shop shows one price without asking for a location.
+    singlePriceZone: true
+  },
   aldi: { id: "aldi", name: "Aldi", color: "#00005F", ownBrands: [], online: false, singlePriceZone: false },
   condis: { id: "condis", name: "Condis", color: "#E30A17", ownBrands: ["Condis"], online: false, singlePriceZone: false },
   lidl: { id: "lidl", name: "Lidl", color: "#0050AA", ownBrands: [], online: false, singlePriceZone: false }

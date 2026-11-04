@@ -1,47 +1,6 @@
 // ingest/src/run.ts
 import { parseArgs } from "node:util";
 
-// ingest/src/http.ts
-var DEFAULT_USER_AGENT = "QuinSuperPriceBot/0.1 (+https://github.com/mrbrainzs/pricing_app)";
-var sleep = (ms) => new Promise((r) => setTimeout(r, ms));
-var PoliteClient = class {
-  constructor(opts = {}) {
-    this.opts = opts;
-  }
-  last = 0;
-  async request(url, init = {}) {
-    const delay = this.opts.delayMs ?? 400;
-    const retries = this.opts.retries ?? 3;
-    for (let attempt = 0; ; attempt++) {
-      const wait = this.last + delay - Date.now();
-      if (wait > 0) await sleep(wait);
-      this.last = Date.now();
-      try {
-        const res = await fetch(url, {
-          ...init,
-          signal: init.signal ?? AbortSignal.timeout(3e4),
-          headers: { "user-agent": this.opts.userAgent ?? DEFAULT_USER_AGENT, accept: "application/json", ...init.headers }
-        });
-        if (res.ok) return res;
-        if (attempt < retries && (res.status === 429 || res.status >= 500)) {
-          await sleep(2 ** attempt * 2e3);
-          continue;
-        }
-        throw new Error(`${init.method ?? "GET"} ${url} -> HTTP ${res.status}`);
-      } catch (err) {
-        if (attempt < retries && !(err instanceof Error && err.message.includes("-> HTTP"))) {
-          await sleep(2 ** attempt * 2e3);
-          continue;
-        }
-        throw err;
-      }
-    }
-  }
-  async json(url, init) {
-    return (await this.request(url, init)).json();
-  }
-};
-
 // packages/core/src/text.ts
 function normalize(text) {
   return text.toLowerCase().normalize("NFD").replace(/[̀-ͯ]/g, "").replace(/l·l/g, "ll").replace(/[^a-z0-9ñç.,\s]/g, " ").replace(/\s+/g, " ").trim();
@@ -165,6 +124,15 @@ var CHAINS = {
     color: "#E4002B",
     ownBrands: ["Bonpreu", "Esclat", "Bonpreu Esclat"],
     online: true,
+    singlePriceZone: true
+  },
+  consum: {
+    id: "consum",
+    name: "Consum",
+    color: "#F39200",
+    ownBrands: ["Consum"],
+    online: true,
+    // The online shop shows one price without asking for a location.
     singlePriceZone: true
   },
   aldi: { id: "aldi", name: "Aldi", color: "#00005F", ownBrands: [], online: false, singlePriceZone: false },
@@ -646,9 +614,111 @@ function nearestPostalCode(pos) {
   return best;
 }
 
+// ingest/src/chains/consum.ts
+var CONSUM_API = "https://tienda.consum.es/api/rest/V1.0/catalog/product";
+var CONSUM_ZONE = "cat";
+var PAGE_SIZE = 40;
+var num = (v) => {
+  if (v === null || v === void 0 || v === "") return null;
+  const n = typeof v === "number" ? v : Number(String(v).trim().replace(",", "."));
+  return Number.isFinite(n) && n > 0 ? n : null;
+};
+var UNIT_TYPES = {
+  "1 kg": { unit: "kg", per: 1 },
+  "1 l": { unit: "l", per: 1 },
+  "100 ml": { unit: "l", per: 0.1 },
+  "100 g": { unit: "kg", per: 0.1 },
+  "100 gr": { unit: "kg", per: 0.1 },
+  "1 ud": { unit: "unit", per: 1 },
+  "1 u": { unit: "unit", per: 1 }
+};
+function prices(item) {
+  const list = item.priceData?.prices ?? [];
+  const regular = list.find((p) => p.id === "PRICE") ?? list[0];
+  const offer = list.find((p) => p !== regular && p.id !== "PRICE");
+  return {
+    price: num(regular?.value?.centAmount),
+    unitAmount: num(regular?.value?.centUnitAmount),
+    offer: num(offer?.value?.centAmount)
+  };
+}
+function displayName(item) {
+  return (item.productData?.description || item.productData?.name || "").replace(/\s+/g, " ").trim();
+}
+function consumSize(item) {
+  const { price, unitAmount } = prices(item);
+  const type = UNIT_TYPES[(item.priceData?.unitPriceUnitType ?? "").trim().toLowerCase()];
+  if (price && unitAmount && type) return { amount: round(price / unitAmount * type.per, 4), unit: type.unit };
+  return parseSize(displayName(item));
+}
+function parseConsumProduct(item) {
+  const name = displayName(item);
+  if (!name || item.id === void 0 || item.id === null) return null;
+  const brand = item.productData?.brand?.name?.trim() || void 0;
+  const ean = item.ean && /^\d{8,14}$/.test(item.ean.trim()) ? item.ean.trim() : void 0;
+  return {
+    chain: "consum",
+    chainProductId: String(item.id),
+    name,
+    brand,
+    ean,
+    isOwnBrand: isOwnBrand("consum", brand),
+    categoryId: classifyProduct(name, brand),
+    size: consumSize(item),
+    imageUrl: item.productData?.imageURL ?? void 0
+  };
+}
+var MAX_PRICE = 300;
+function parseConsumPrice(item, size, observedAt) {
+  const { price, unitAmount, offer } = prices(item);
+  if (!price || price > MAX_PRICE) return null;
+  const type = UNIT_TYPES[(item.priceData?.unitPriceUnitType ?? "").trim().toLowerCase()];
+  let unitPrice = null;
+  if (unitAmount && type && (!size || size.unit === type.unit)) unitPrice = round(unitAmount / type.per, 4);
+  else if (size) unitPrice = round(price / size.amount, 4);
+  return {
+    chain: "consum",
+    chainProductId: String(item.id),
+    zone: CONSUM_ZONE,
+    price,
+    unitPrice,
+    promotion: offer && offer < price ? `offer ${offer.toFixed(2)}` : void 0,
+    observedAt,
+    source: "online"
+  };
+}
+function consumSearchTerms() {
+  return [...new Set(CATEGORIES.map((c) => c.names.es.toLowerCase()))];
+}
+async function scrapeConsum(http, opts = {}) {
+  const observedAt = (opts.now ?? /* @__PURE__ */ new Date()).toISOString();
+  const log = opts.log ?? (() => {
+  });
+  const maxPages = opts.maxPages ?? 3;
+  const products = /* @__PURE__ */ new Map();
+  const priceById = /* @__PURE__ */ new Map();
+  for (const term of opts.terms ?? consumSearchTerms()) {
+    for (let page = 0; page < maxPages; page++) {
+      const url = `${CONSUM_API}?${new URLSearchParams({ limit: String(PAGE_SIZE), offset: String(page * PAGE_SIZE), q: term })}`;
+      const data = await http.json(url);
+      for (const item of data.products ?? []) {
+        const product = parseConsumProduct(item);
+        if (!product?.categoryId || products.has(product.chainProductId)) continue;
+        const price = parseConsumPrice(item, product.size, observedAt);
+        if (!price) continue;
+        products.set(product.chainProductId, product);
+        priceById.set(product.chainProductId, price);
+      }
+      if (!data.hasMore) break;
+    }
+    log(`"${term}": ${products.size} products so far`);
+  }
+  return { products: [...products.values()], prices: [...priceById.values()] };
+}
+
 // ingest/src/chains/mercadona.ts
 var MERCADONA_API = "https://tienda.mercadona.es/api";
-var num = (v) => {
+var num2 = (v) => {
   if (v === null || v === void 0 || v === "") return null;
   const n = typeof v === "number" ? v : Number(String(v).trim().replace(",", "."));
   return Number.isFinite(n) && n > 0 ? n : null;
@@ -656,16 +726,16 @@ var num = (v) => {
 var REFERENCE_UNIT = { kg: "kg", l: "l", ud: "unit", u: "unit", unidad: "unit" };
 function mercadonaSize(p) {
   const pi = p.price_instructions;
-  const amount = num(pi.unit_size);
+  const amount = num2(pi.unit_size);
   if (amount && pi.size_format) {
     const size = toSize(amount, pi.size_format);
     if (size) return size;
   }
   return parseSize(`${p.display_name} ${p.packaging ?? ""}`);
 }
-function guessBrand(displayName) {
+function guessBrand(displayName2) {
   const own = ["Hacendado", "Deliplus", "Bosque Verde", "Compy", "Solcare"];
-  return own.find((b) => displayName.toLowerCase().includes(b.toLowerCase()));
+  return own.find((b) => displayName2.toLowerCase().includes(b.toLowerCase()));
 }
 function parseMercadonaProduct(p, chainCategory, detail) {
   const brand = detail?.brand?.trim() || guessBrand(p.display_name);
@@ -684,15 +754,15 @@ function parseMercadonaProduct(p, chainCategory, detail) {
 }
 function parseMercadonaPrice(p, zone, observedAt) {
   const pi = p.price_instructions;
-  const price = num(pi.unit_price);
+  const price = num2(pi.unit_price);
   if (!price) return null;
   const refUnit = pi.reference_format ? REFERENCE_UNIT[pi.reference_format.trim().toLowerCase()] : void 0;
   const size = mercadonaSize(p);
-  let unitPrice = refUnit && (!size || refUnit === size.unit) ? num(pi.reference_price) ?? num(pi.bulk_price) : null;
+  let unitPrice = refUnit && (!size || refUnit === size.unit) ? num2(pi.reference_price) ?? num2(pi.bulk_price) : null;
   if (unitPrice === null) {
     unitPrice = size ? round(price / size.amount, 4) : null;
   }
-  const previous = num(pi.previous_unit_price);
+  const previous = num2(pi.previous_unit_price);
   return {
     chain: "mercadona",
     chainProductId: String(p.id),
@@ -723,7 +793,7 @@ async function scrapeMercadona(http, opts) {
   const leafIds = tree.results.flatMap((top) => top.categories.map((c) => ({ id: c.id, path: `${top.name} > ${c.name}` })));
   const limit = opts.maxCategories ?? leafIds.length;
   const products = /* @__PURE__ */ new Map();
-  const prices = /* @__PURE__ */ new Map();
+  const prices2 = /* @__PURE__ */ new Map();
   for (const leaf of leafIds.slice(0, limit)) {
     const detail = await http.json(`${MERCADONA_API}/categories/${leaf.id}/?lang=es&wh=${wh}`);
     for (const sub of detail.categories) {
@@ -739,32 +809,13 @@ async function scrapeMercadona(http, opts) {
         }
         products.set(String(p.id), parseMercadonaProduct(p, `${leaf.path} > ${sub.name}`, productDetail));
         const price = parseMercadonaPrice(p, wh, observedAt);
-        if (price) prices.set(String(p.id), price);
+        if (price) prices2.set(String(p.id), price);
       }
     }
     log(`${leaf.path}: ${products.size} products so far`);
   }
-  return { products: [...products.values()], prices: [...prices.values()] };
+  return { products: [...products.values()], prices: [...prices2.values()] };
 }
-
-// ingest/src/sink.ts
-import { mkdir, writeFile } from "node:fs/promises";
-import { join } from "node:path";
-var JsonSink = class {
-  constructor(dir) {
-    this.dir = dir;
-  }
-  async existingProducts() {
-    return /* @__PURE__ */ new Map();
-  }
-  async save(chain, products, prices) {
-    await mkdir(this.dir, { recursive: true });
-    const stamp = (/* @__PURE__ */ new Date()).toISOString().slice(0, 10);
-    const file = join(this.dir, `${chain}-${stamp}.json`);
-    await writeFile(file, JSON.stringify({ chain, products, prices }, null, 2));
-    return { products: products.length, prices: prices.length, shrunk: [] };
-  }
-};
 
 // ingest/src/database.ts
 import { createRequire } from "node:module";
@@ -835,6 +886,66 @@ function storeZones(db, chain) {
   return new Map(rows.map((r) => [r.zone, r.postal]));
 }
 
+// ingest/src/http.ts
+var DEFAULT_USER_AGENT = "QuinSuperPriceBot/0.1 (+https://github.com/mrbrainzs/pricing_app)";
+var sleep = (ms) => new Promise((r) => setTimeout(r, ms));
+var PoliteClient = class {
+  constructor(opts = {}) {
+    this.opts = opts;
+  }
+  last = 0;
+  async request(url, init = {}) {
+    const delay = this.opts.delayMs ?? 400;
+    const retries = this.opts.retries ?? 3;
+    for (let attempt = 0; ; attempt++) {
+      const wait = this.last + delay - Date.now();
+      if (wait > 0) await sleep(wait);
+      this.last = Date.now();
+      try {
+        const res = await fetch(url, {
+          ...init,
+          signal: init.signal ?? AbortSignal.timeout(3e4),
+          headers: { "user-agent": this.opts.userAgent ?? DEFAULT_USER_AGENT, accept: "application/json", ...init.headers }
+        });
+        if (res.ok) return res;
+        if (attempt < retries && (res.status === 429 || res.status >= 500)) {
+          await sleep(2 ** attempt * 2e3);
+          continue;
+        }
+        throw new Error(`${init.method ?? "GET"} ${url} -> HTTP ${res.status}`);
+      } catch (err) {
+        if (attempt < retries && !(err instanceof Error && err.message.includes("-> HTTP"))) {
+          await sleep(2 ** attempt * 2e3);
+          continue;
+        }
+        throw err;
+      }
+    }
+  }
+  async json(url, init) {
+    return (await this.request(url, init)).json();
+  }
+};
+
+// ingest/src/sink.ts
+import { mkdir, writeFile } from "node:fs/promises";
+import { join } from "node:path";
+var JsonSink = class {
+  constructor(dir) {
+    this.dir = dir;
+  }
+  async existingProducts() {
+    return /* @__PURE__ */ new Map();
+  }
+  async save(chain, products, prices2) {
+    await mkdir(this.dir, { recursive: true });
+    const stamp = (/* @__PURE__ */ new Date()).toISOString().slice(0, 10);
+    const file = join(this.dir, `${chain}-${stamp}.json`);
+    await writeFile(file, JSON.stringify({ chain, products, prices: prices2 }, null, 2));
+    return { products: products.length, prices: prices2.length, shrunk: [] };
+  }
+};
+
 // ingest/src/sqliteSink.ts
 var SqliteSink = class {
   db;
@@ -850,7 +961,7 @@ var SqliteSink = class {
       return [p.chainProductId, { id: p.id, chainProductId: p.chainProductId, sizeAmount: p.size?.amount ?? null, ean: p.ean ?? null }];
     }));
   }
-  async save(chain, products, prices) {
+  async save(chain, products, prices2) {
     const existing = await this.existingProducts(chain);
     const now = (/* @__PURE__ */ new Date()).toISOString();
     const shrunk = [];
@@ -883,7 +994,7 @@ var SqliteSink = class {
         );
         if (changed && p.size.amount < old.sizeAmount) shrunk.push(p.chainProductId);
       }
-      for (const p of prices) {
+      for (const p of prices2) {
         if (p.chain !== chain || !Number.isFinite(p.price) || p.price <= 0 || !Number.isFinite(Date.parse(p.observedAt))) {
           throw new Error("Invalid price observation");
         }
@@ -922,6 +1033,8 @@ var CHAIN_PATTERNS = [
   ["bonarea", /\bbon ?area\b/],
   ["caprabo", /\bcaprabo\b/],
   ["bonpreu", /\bbon ?preu\b|\besclat\b/],
+  // "Consum" at the start only: "Cooperativa de Consum …" is a different shop. Charter franchises are left out.
+  ["consum", /^consum( |$)/],
   // "Dia", "DIA", "Dia Market", "La Plaza de DIA" — but not "Diagonal" or "Super Dia y Noche".
   ["dia", /^(la plaza de )?dia( market| maxi)?$/]
 ];
@@ -1046,6 +1159,48 @@ async function refreshStores(db, http, log, deps = {}) {
 
 // ingest/src/run.ts
 var DEFAULT_POSTAL_CODES = ["08001", "08012", "08014", "08018", "08027", "08028"];
+async function save(ctx, chain, result, log, label) {
+  const classified = result.products.filter((p) => p.categoryId).length;
+  log(`${label}: ${result.products.length} products (${classified} matched to generic items), ${result.prices.length} prices`);
+  const saved = await ctx.sink.save(chain, result.products, result.prices);
+  log(`saved ${saved.products} products, ${saved.prices} prices${saved.shrunk.length ? `, size went down: ${saved.shrunk.join(", ")}` : ""}`);
+}
+var importMercadona = async (ctx, log) => {
+  const zones = /* @__PURE__ */ new Map();
+  for (const pc of ctx.postalCodes) {
+    const wh = await mercadonaWarehouse(ctx.http, pc);
+    log(`postal code ${pc} -> warehouse ${wh}`);
+    if (!zones.has(wh)) zones.set(wh, pc);
+  }
+  if (ctx.sink instanceof SqliteSink) {
+    for (const [zone, pc] of storeZones(ctx.sink.db, "mercadona")) {
+      if (!zones.has(zone)) {
+        zones.set(zone, pc);
+        log(`warehouse ${zone} added because stores use it (postal code ${pc})`);
+      }
+    }
+  }
+  const existing = await ctx.sink.existingProducts("mercadona");
+  const seenDetail = /* @__PURE__ */ new Set();
+  const needsDetail = (id) => {
+    if (ctx.details === "none" || seenDetail.has(id)) return false;
+    seenDetail.add(id);
+    return ctx.details === "all" || !existing.get(id)?.ean;
+  };
+  for (const wh of zones.keys()) {
+    const result = await scrapeMercadona(ctx.http, { warehouse: wh, needsDetail, maxCategories: ctx.maxCategories, log });
+    await save(ctx, "mercadona", result, log, `warehouse ${wh}`);
+  }
+};
+var importConsum = async (ctx, log) => {
+  const terms = consumSearchTerms().slice(0, ctx.maxCategories);
+  const result = await scrapeConsum(ctx.http, { terms, log });
+  if (result.products.length < Math.min(20, terms.length)) {
+    throw new Error(`only ${result.products.length} products found for ${terms.length} searches; the shop may have changed`);
+  }
+  await save(ctx, "consum", result, log, "online shop");
+};
+var IMPORTERS = { mercadona: importMercadona, consum: importConsum };
 async function main() {
   const { values } = parseArgs({
     options: {
@@ -1065,8 +1220,10 @@ async function main() {
   } else if (values.sink === "json") {
     sink = new JsonSink(values.out);
   } else throw new Error("Unknown sink. Use json or sqlite.");
-  if (values.chain !== "mercadona") {
-    throw new Error(`Chain "${values.chain}" has no importer yet. v1 importers: mercadona.`);
+  const chains = values.chain === "all" ? Object.keys(IMPORTERS) : values.chain.split(",").map((c) => c.trim()).filter(Boolean);
+  const unknown = chains.filter((c) => !IMPORTERS[c]);
+  if (unknown.length || chains.length === 0) {
+    throw new Error(`No importer for "${unknown.join(", ")}". Importers: ${Object.keys(IMPORTERS).join(", ")} (or all).`);
   }
   if (!["auto", "force", "skip", "only"].includes(values.stores)) throw new Error("--stores must be auto, force, skip or only.");
   const http = new PoliteClient({ delayMs: 400 });
@@ -1083,41 +1240,24 @@ async function main() {
   } else if (values.stores === "only") {
     throw new Error("--stores only needs --sink sqlite.");
   }
-  const log = (m) => console.log(`[mercadona] ${m}`);
-  const postalCodes = values.postal.split(",").map((s) => s.trim()).filter(Boolean);
-  const zones = /* @__PURE__ */ new Map();
-  for (const pc of postalCodes) {
-    const wh = await mercadonaWarehouse(http, pc);
-    log(`postal code ${pc} -> warehouse ${wh}`);
-    if (!zones.has(wh)) zones.set(wh, pc);
-  }
-  if (sink instanceof SqliteSink) {
-    for (const [zone, pc] of storeZones(sink.db, "mercadona")) {
-      if (!zones.has(zone)) {
-        zones.set(zone, pc);
-        log(`warehouse ${zone} added because stores use it (postal code ${pc})`);
-      }
+  const ctx = {
+    sink,
+    http,
+    postalCodes: values.postal.split(",").map((s) => s.trim()).filter(Boolean),
+    details: values.details,
+    maxCategories: values["max-categories"] ? Number(values["max-categories"]) : void 0
+  };
+  const failed = [];
+  for (const chain of chains) {
+    const log = (m) => console.log(`[${chain}] ${m}`);
+    try {
+      await IMPORTERS[chain](ctx, log);
+    } catch (err) {
+      failed.push(chain);
+      console.error(`[${chain}] import failed: ${err.message}`);
     }
   }
-  const existing = await sink.existingProducts("mercadona");
-  const seenDetail = /* @__PURE__ */ new Set();
-  const needsDetail = (id) => {
-    if (values.details === "none" || seenDetail.has(id)) return false;
-    seenDetail.add(id);
-    return values.details === "all" || !existing.get(id)?.ean;
-  };
-  for (const wh of zones.keys()) {
-    const result = await scrapeMercadona(http, {
-      warehouse: wh,
-      needsDetail,
-      maxCategories: values["max-categories"] ? Number(values["max-categories"]) : void 0,
-      log
-    });
-    const classified = result.products.filter((p) => p.categoryId).length;
-    log(`warehouse ${wh}: ${result.products.length} products (${classified} matched to generic items), ${result.prices.length} prices`);
-    const saved = await sink.save("mercadona", result.products, result.prices);
-    log(`saved ${saved.products} products, ${saved.prices} prices${saved.shrunk.length ? `, size went down: ${saved.shrunk.join(", ")}` : ""}`);
-  }
+  if (failed.length) throw new Error(`Import failed for: ${failed.join(", ")}`);
 }
 main().catch((err) => {
   console.error(err);
