@@ -1,0 +1,78 @@
+name: Deploy QuinSuper web
+on:
+  push:
+    branches: ['claude/cabas-scaffold']
+  workflow_dispatch:
+permissions:
+  contents: read
+concurrency:
+  group: quinsuper-production
+  cancel-in-progress: false
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci
+      - run: npm test
+      - run: npm run typecheck
+      - run: npm run export:web -w app
+      - run: test -s app/dist/index.html
+      - uses: actions/upload-artifact@v4
+        with:
+          name: web
+          path: app/dist/
+          include-hidden-files: true
+          retention-days: 7
+  deploy:
+    needs: build
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    environment: production
+    env:
+      DEPLOY_KEY: ${{ secrets.QUINSUPER_DEPLOY_KEY }}
+      KNOWN_HOSTS: ${{ secrets.QUINSUPER_KNOWN_HOSTS }}
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          name: web
+          path: dist
+      - name: Configure SSH
+        shell: bash
+        run: |
+          set -euo pipefail
+          test -n "$DEPLOY_KEY" || { echo "Missing QUINSUPER_DEPLOY_KEY"; exit 1; }
+          test -n "$KNOWN_HOSTS" || { echo "Missing QUINSUPER_KNOWN_HOSTS"; exit 1; }
+          install -m 700 -d ~/.ssh
+          printf '%s\n' "$DEPLOY_KEY" > ~/.ssh/id_ed25519
+          chmod 600 ~/.ssh/id_ed25519
+          printf '%s\n' "$KNOWN_HOSTS" > ~/.ssh/known_hosts
+      - name: Upload and activate release
+        shell: bash
+        run: |
+          set -euo pipefail
+          release="${GITHUB_SHA}-${GITHUB_RUN_ID}-${GITHUB_RUN_ATTEMPT}"
+          tar -czf web.tar.gz -C dist .
+          scp -o BatchMode=yes -o StrictHostKeyChecking=yes web.tar.gz "quinsuper@204.168.165.248:/var/www/quinsuper/incoming/$release.tar.gz"
+          ssh -o BatchMode=yes -o StrictHostKeyChecking=yes quinsuper@204.168.165.248 bash -s -- "$release" <<'REMOTE'
+          set -euo pipefail
+          release="$1"
+          base=/var/www/quinsuper
+          mkdir "$base/releases/$release"
+          tar -xzf "$base/incoming/$release.tar.gz" -C "$base/releases/$release"
+          test -s "$base/releases/$release/index.html"
+          chmod -R a+rX "$base/releases/$release"
+          ln -s "$base/releases/$release" "$base/current.next"
+          mv -Tf "$base/current.next" "$base/current"
+          rm "$base/incoming/$release.tar.gz"
+          REMOTE
+      - name: Check HTTPS
+        run: curl --fail --silent --show-error --retry 3 https://quinsuper.trottedmedia.com/ -o /dev/null
+      - name: Remove SSH credentials
+        if: always()
+        run: rm -f ~/.ssh/id_ed25519
