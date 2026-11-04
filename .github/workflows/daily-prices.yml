@@ -1,0 +1,29 @@
+name: Daily prices
+# Runs before 07:00 Barcelona time (04:30 UTC = 05:30 CET / 06:30 CEST).
+on:
+  schedule:
+    - cron: '30 4 * * *'
+  workflow_dispatch:
+    inputs:
+      max_categories:
+        description: 'Stop after N categories (empty = all)'
+        required: false
+jobs:
+  mercadona:
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci
+      - name: Import Mercadona prices
+        env:
+          SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+          SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
+        run: >
+          npm run ingest -w @pricing/ingest --
+          --chain mercadona --sink supabase
+          ${{ inputs.max_categories && format('--max-categories {0}', inputs.max_categories) || '' }}
