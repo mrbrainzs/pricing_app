@@ -866,6 +866,9 @@ function nearestPostalCode(pos) {
 var B64 = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789-_";
 var B64_INDEX = new Map([...B64].map((c, i) => [c, i]));
 
+// packages/core/src/basketIndex.ts
+var INDEX_TIME_MINUTES = 7 * 60;
+
 // ingest/src/chains/terms.ts
 function genericSearchTerms(lang = "es") {
   return [...new Set(CATEGORIES.map((c) => c.names[lang].toLowerCase()))];

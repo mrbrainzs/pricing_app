@@ -1,16 +1,61 @@
 // ingest/src/server.ts
 import { createServer } from "node:http";
 
-// ingest/src/database.ts
-import { createRequire } from "node:module";
-import { mkdirSync } from "node:fs";
-import { dirname } from "node:path";
+// packages/core/src/text.ts
+function normalize(text) {
+  return text.toLowerCase().normalize("NFD").replace(/[̀-ͯ]/g, "").replace(/l·l/g, "ll").replace(/[^a-z0-9ñç.,\s]/g, " ").replace(/\s+/g, " ").trim();
+}
+function tokens(text) {
+  return normalize(text).split(" ").map((t) => t.replace(/[.,]/g, "")).filter((t) => t.length > 0);
+}
+function editDistance(a, b, max = Infinity) {
+  if (a === b) return 0;
+  if (Math.abs(a.length - b.length) > max) return max + 1;
+  const rows = a.length + 1;
+  const cols = b.length + 1;
+  const d = Array.from({ length: rows }, () => new Array(cols).fill(0));
+  for (let i = 0; i < rows; i++) d[i][0] = i;
+  for (let j = 0; j < cols; j++) d[0][j] = j;
+  for (let i = 1; i < rows; i++) {
+    let rowMin = Infinity;
+    for (let j = 1; j < cols; j++) {
+      const cost = a[i - 1] === b[j - 1] ? 0 : 1;
+      let v = Math.min(d[i - 1][j] + 1, d[i][j - 1] + 1, d[i - 1][j - 1] + cost);
+      if (i > 1 && j > 1 && a[i - 1] === b[j - 2] && a[i - 2] === b[j - 1]) {
+        v = Math.min(v, d[i - 2][j - 2] + 1);
+      }
+      d[i][j] = v;
+      rowMin = Math.min(rowMin, v);
+    }
+    if (rowMin > max) return max + 1;
+  }
+  return d[rows - 1][cols - 1];
+}
+function allowedTypos(length) {
+  if (length >= 8) return 2;
+  if (length >= 4) return 1;
+  return 0;
+}
+function tokenMatches(query, word) {
+  if (word === query) return true;
+  if (query.length >= 3 && word.startsWith(query)) return true;
+  const max = allowedTypos(query.length);
+  return max > 0 && editDistance(query, word, max) <= max;
+}
 
 // packages/core/src/units.ts
 var NUM = String.raw`(\d+(?:[.,]\d+)?)`;
 var UNIT = String.raw`([a-z]+)`;
 var MULTI = new RegExp(String.raw`(\d+)\s*(?:[a-z]+\s*)?[x×]\s*` + NUM + String.raw`\s*` + UNIT + String.raw`\b`, "gi");
 var SINGLE = new RegExp(NUM + String.raw`\s*` + UNIT + String.raw`\b`, "gi");
+function round(n, decimals = 2) {
+  const f = 10 ** decimals;
+  return Math.round(n * f) / f;
+}
+function sizeRatio(a, b) {
+  if (!a || !b || a.unit !== b.unit || b.amount === 0) return null;
+  return a.amount / b.amount;
+}
 
 // packages/core/src/chains.ts
 var CHAINS = {
@@ -77,6 +122,54 @@ var CHAINS = {
 };
 
 // packages/core/src/categories.ts
+var MAX_UNIT_PRICE = {
+  milk: 4,
+  eggs: 1.2,
+  yogurt_plain: 12,
+  butter: 40,
+  cheese_sliced: 45,
+  bread_sliced: 12,
+  rice: 12,
+  pasta: 12,
+  olive_oil_ev: 25,
+  olive_oil: 18,
+  sunflower_oil: 8,
+  coffee_ground: 50,
+  sugar: 8,
+  flour: 8,
+  salt: 10,
+  tomato_crushed: 8,
+  tomato_fried: 10,
+  tuna_canned: 60,
+  chickpeas: 10,
+  lentils: 12,
+  tomatoes: 18,
+  bananas: 6,
+  apples: 8,
+  oranges: 6,
+  potatoes: 6,
+  onions: 8,
+  carrots: 6,
+  lettuce: 4,
+  chicken_breast: 15,
+  minced_meat: 25,
+  ham_cooked: 45,
+  water: 3,
+  beer: 12,
+  orange_juice: 12,
+  toilet_paper: 1.5,
+  kitchen_roll: 4,
+  laundry_detergent: 1.2,
+  dish_soap: 15,
+  shampoo: 60,
+  toothpaste: 150
+};
+function plausibleUnitPrice(categoryId, unitPrice, unit) {
+  const category = CATEGORY_BY_ID[categoryId];
+  const max = MAX_UNIT_PRICE[categoryId];
+  if (!category || max === void 0 || unitPrice === null || unit !== category.defaultSize.unit) return true;
+  return unitPrice <= max;
+}
 var kg = (amount) => ({ amount, unit: "kg" });
 var l = (amount) => ({ amount, unit: "l" });
 var ud = (amount) => ({ amount, unit: "unit" });
@@ -450,14 +543,495 @@ var CATEGORIES = [
 ];
 var CATEGORY_BY_ID = Object.fromEntries(CATEGORIES.map((c) => [c.id, c]));
 
+// packages/core/src/list.ts
+var index = null;
+function nameIndex() {
+  index ??= CATEGORIES.flatMap(
+    (c) => [c.names.ca, c.names.es, c.names.en, ...c.synonyms].map((s) => {
+      const text = normalize(s);
+      return { categoryId: c.id, text, words: tokens(s) };
+    })
+  );
+  return index;
+}
+var STOP_WORDS = /* @__PURE__ */ new Set(["de", "del", "la", "el", "les", "los", "las", "a", "en", "per", "para", "of", "the", "d", "l"]);
+function resolveItemText(text) {
+  const query = normalize(text);
+  if (!query) return null;
+  const qWords = tokens(text).filter((w) => !STOP_WORDS.has(w));
+  if (qWords.length === 0) return null;
+  let best = null;
+  for (const entry of nameIndex()) {
+    let score = 0;
+    if (entry.text === query) score = 1;
+    else {
+      const entryWords = entry.words.filter((w) => !STOP_WORDS.has(w));
+      const matched = qWords.filter((q) => entryWords.some((w) => tokenMatches(q, w))).length;
+      const covered = entryWords.filter((w) => qWords.some((q) => tokenMatches(q, w))).length;
+      if (matched === qWords.length) {
+        score = 0.6 + 0.3 * (covered / entryWords.length);
+      }
+    }
+    if (score > 0 && (!best || score > best.score)) best = { categoryId: entry.categoryId, score };
+  }
+  return best;
+}
+
+// packages/core/src/search.ts
+var STOP = /* @__PURE__ */ new Set(["de", "del", "la", "el", "les", "los", "las", "a", "en", "con", "amb", "per", "para", "of", "the", "d", "l"]);
+function wordScore(q, words) {
+  let best = 0;
+  for (const w of words) {
+    if (w === q) return 1;
+    if (q.length >= 3 && w.startsWith(q)) best = Math.max(best, 0.9);
+    else if (tokenMatches(q, w)) best = Math.max(best, 0.7);
+  }
+  return best;
+}
+function searchProducts(query, products, limit = 50) {
+  const qWords = tokens(query).filter((w) => !STOP.has(w));
+  if (qWords.length === 0) return [];
+  const resolved = resolveItemText(query);
+  const categoryId = resolved && resolved.score >= 0.75 ? resolved.categoryId : null;
+  const hits = [];
+  for (const p of products) {
+    const words = tokens(`${p.name} ${p.brand ?? ""}`);
+    let text = 0;
+    let allMatched = true;
+    for (const q of qWords) {
+      const s = wordScore(q, words);
+      if (s === 0) {
+        allMatched = false;
+        break;
+      }
+      text += s;
+    }
+    let score = allMatched ? text / qWords.length * 0.95 : 0;
+    if (categoryId && p.categoryId === categoryId) score = Math.max(score, 0.8);
+    if (score > 0) {
+      if (p.ean && normalize(query) === p.ean) score = 1;
+      hits.push({ product: p, score });
+    }
+  }
+  hits.sort((a, b) => b.score - a.score || a.product.name.localeCompare(b.product.name));
+  return hits.slice(0, limit);
+}
+
 // packages/core/src/freshness.ts
 var DAY_MS = 24 * 60 * 60 * 1e3;
+var STALE_AFTER_DAYS = 3;
+var ONLINE_EXPIRES_AFTER_DAYS = 7;
+var RECEIPT_EXPIRES_AFTER_DAYS = 14;
+function ageInDays(observedAt, now) {
+  return (now.getTime() - new Date(observedAt).getTime()) / DAY_MS;
+}
+function freshness(obs, now) {
+  const age = ageInDays(obs.observedAt, now);
+  const maxAge = obs.source === "receipt" ? RECEIPT_EXPIRES_AFTER_DAYS : ONLINE_EXPIRES_AFTER_DAYS;
+  if (age > maxAge) return "expired";
+  if (age > STALE_AFTER_DAYS) return "stale";
+  return "fresh";
+}
+function isUsable(obs, now) {
+  return freshness(obs, now) !== "expired";
+}
+
+// packages/core/src/geo.ts
+function distanceKm(a, b) {
+  const R = 6371;
+  const rad = Math.PI / 180;
+  const dLat = (b.lat - a.lat) * rad;
+  const dLng = (b.lng - a.lng) * rad;
+  const h = Math.sin(dLat / 2) ** 2 + Math.cos(a.lat * rad) * Math.cos(b.lat * rad) * Math.sin(dLng / 2) ** 2;
+  return 2 * R * Math.asin(Math.sqrt(h));
+}
+
+// packages/core/src/compare.ts
+function indexPrices(prices, now) {
+  const idx = /* @__PURE__ */ new Map();
+  for (const p of prices) {
+    if (!isUsable(p, now)) continue;
+    const key = p.storeId ? `${p.productId}|store:${p.storeId}` : `${p.productId}|zone:${p.zone}`;
+    const prev = idx.get(key);
+    if (!prev || p.observedAt > prev.observedAt) idx.set(key, p);
+  }
+  return idx;
+}
+function priceAt(idx, product, store) {
+  return idx.get(`${product.id}|store:${store.id}`) ?? idx.get(`${product.id}|zone:${store.zone}`);
+}
+function fitsLevel(p, level) {
+  if (level.kind === "any") return true;
+  if (level.kind === "own") return p.isOwnBrand;
+  const want = normalize(level.brand);
+  if (!want) return true;
+  return normalize(p.brand ?? "") === want || normalize(p.name).includes(want);
+}
+var MIN_SIZE_RATIO = 0.4;
+var MAX_SIZE_RATIO = 3;
+function lineFor(item, product, obs, now, matchType) {
+  let cost;
+  const unitPrice = obs.unitPrice ?? (product.size ? obs.price / product.size.amount : null);
+  const category = item.categoryId ? CATEGORY_BY_ID[item.categoryId] : void 0;
+  const def = category?.defaultSize;
+  if (matchType === "category" && def) {
+    const ratio = sizeRatio(product.size, def);
+    const maxRatio = category?.maxPackRatio ?? MAX_SIZE_RATIO;
+    if (ratio === null || ratio < MIN_SIZE_RATIO || ratio > maxRatio || unitPrice === null) return null;
+    if (!plausibleUnitPrice(item.categoryId, unitPrice, product.size?.unit)) return null;
+    cost = unitPrice * def.amount * item.quantity;
+  } else {
+    cost = obs.price * item.quantity;
+  }
+  return {
+    itemId: item.id,
+    product,
+    price: obs.price,
+    unitPrice: unitPrice === null ? null : round(unitPrice, 2),
+    cost: round(cost),
+    matchType,
+    observedAt: obs.observedAt,
+    source: obs.source,
+    freshness: freshness(obs, now),
+    promotion: obs.promotion
+  };
+}
+function bestLine(item, store, chainProducts, byCategory, idx, now) {
+  let best = null;
+  const consider = (p, type) => {
+    if (!fitsLevel(p, item.level)) return;
+    const obs = priceAt(idx, p, store);
+    if (!obs) return;
+    const line = lineFor(item, p, obs, now, type);
+    if (!line) return;
+    if (!best || line.cost < best.cost || line.cost === best.cost && line.freshness === "fresh" && best.freshness !== "fresh") best = line;
+  };
+  if (item.categoryId) {
+    for (const p of byCategory.get(item.categoryId) ?? []) consider(p, "category");
+  } else {
+    const hits = searchProducts(item.text, chainProducts, 10).filter((h) => h.score >= 0.75);
+    const top = hits[0]?.score ?? 0;
+    for (const h of hits) if (h.score >= top - 0.05) consider(h.product, "search");
+  }
+  return best;
+}
+function median(values) {
+  const s = [...values].sort((a, b) => a - b);
+  const mid = Math.floor(s.length / 2);
+  return s.length % 2 ? s[mid] : (s[mid - 1] + s[mid]) / 2;
+}
+function compareBasket(input) {
+  const { items, products, now, origin } = input;
+  const maxDistanceKm = input.maxDistanceKm ?? 3;
+  const minSaving = input.minSavingForSplit ?? 3;
+  const maxMissingShare = input.maxMissingShare ?? 0.2;
+  const idx = indexPrices(input.prices, now);
+  const nearest = /* @__PURE__ */ new Map();
+  for (const store of input.stores) {
+    if (input.chains && !input.chains.includes(store.chain)) continue;
+    const d = distanceKm(origin, store);
+    if (d > maxDistanceKm) continue;
+    const prev = nearest.get(store.chain);
+    if (!prev || d < prev.d) nearest.set(store.chain, { store, d });
+  }
+  const productsByChain = /* @__PURE__ */ new Map();
+  for (const p of products) {
+    const list = productsByChain.get(p.chain) ?? [];
+    list.push(p);
+    productsByChain.set(p.chain, list);
+  }
+  const noPrices = [];
+  const raw = [...nearest.values()].flatMap(({ store, d }) => {
+    const chainProducts = productsByChain.get(store.chain) ?? [];
+    if (!chainProducts.some((p) => priceAt(idx, p, store))) {
+      noPrices.push(store.chain);
+      return [];
+    }
+    const byCategory = /* @__PURE__ */ new Map();
+    for (const p of chainProducts) {
+      if (!p.categoryId) continue;
+      const list = byCategory.get(p.categoryId) ?? [];
+      list.push(p);
+      byCategory.set(p.categoryId, list);
+    }
+    const lines = /* @__PURE__ */ new Map();
+    for (const item of items) {
+      const line = bestLine(item, store, chainProducts, byCategory, idx, now);
+      if (line) lines.set(item.id, line);
+    }
+    return [{ store, distanceKm: round(d, 2), lines }];
+  });
+  const unavailable = items.filter((i) => raw.every((r) => !r.lines.has(i.id))).map((i) => i.id);
+  const available = items.filter((i) => !unavailable.includes(i.id));
+  const medianCost = /* @__PURE__ */ new Map();
+  for (const item of available) {
+    medianCost.set(item.id, median(raw.flatMap((r) => r.lines.has(item.id) ? [r.lines.get(item.id).cost] : [])));
+  }
+  const baskets = raw.map(({ store, distanceKm: dist, lines }) => {
+    const found = available.filter((i) => lines.has(i.id));
+    const missing = available.filter((i) => !lines.has(i.id)).map((i) => i.id);
+    const total = round(found.reduce((sum, i) => sum + lines.get(i.id).cost, 0));
+    const penalty = missing.reduce((sum, id) => sum + (medianCost.get(id) ?? 0), 0);
+    return {
+      store,
+      distanceKm: dist,
+      lines: available.flatMap((i) => lines.has(i.id) ? [lines.get(i.id)] : []),
+      missing,
+      total,
+      comparableTotal: round(total + penalty),
+      found: found.length,
+      requested: available.length,
+      flagged: available.length > 0 && missing.length / available.length > maxMissingShare,
+      staleCount: [...lines.values()].filter((l2) => l2.freshness === "stale").length,
+      diffToNext: null
+    };
+  });
+  baskets.sort(
+    (a, b) => Number(a.flagged) - Number(b.flagged) || a.comparableTotal - b.comparableTotal || a.distanceKm - b.distanceKm
+  );
+  baskets.forEach((b, i) => {
+    const next = baskets[i + 1];
+    b.diffToNext = next ? round(next.comparableTotal - b.comparableTotal) : null;
+  });
+  return { ranking: baskets, split: bestSplit(baskets, available, medianCost, minSaving), unavailable, noPrices };
+}
+function bestSplit(baskets, items, medianCost, minSaving) {
+  const best = baskets.find((b) => !b.flagged) ?? baskets[0];
+  if (!best || baskets.length < 2) return null;
+  let winner = null;
+  for (let i = 0; i < baskets.length; i++) {
+    for (let j = i + 1; j < baskets.length; j++) {
+      const a = baskets[i];
+      const b = baskets[j];
+      const la = new Map(a.lines.map((l2) => [l2.itemId, l2]));
+      const lb = new Map(b.lines.map((l2) => [l2.itemId, l2]));
+      const atA = [];
+      const atB = [];
+      const missing = [];
+      for (const item of items) {
+        const x = la.get(item.id);
+        const y = lb.get(item.id);
+        if (x && (!y || x.cost <= y.cost)) atA.push(x);
+        else if (y) atB.push(y);
+        else missing.push(item.id);
+      }
+      if (atA.length === 0 || atB.length === 0) continue;
+      const found = atA.length + atB.length;
+      if (found < best.found) continue;
+      const total = round([...atA, ...atB].reduce((s, l2) => s + l2.cost, 0));
+      const comparableTotal = round(total + missing.reduce((s, id) => s + (medianCost.get(id) ?? 0), 0));
+      const saving = round(best.comparableTotal - comparableTotal);
+      if (!winner || saving > winner.saving) {
+        winner = { stores: [a, b], lines: [atA, atB], total, comparableTotal, found, missing, saving, worthIt: false };
+      }
+    }
+  }
+  if (!winner || winner.saving <= 0) return null;
+  winner.worthIt = winner.saving >= minSaving;
+  return winner;
+}
 
 // packages/core/src/shareCard.ts
 var B64 = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789-_";
 var B64_INDEX = new Map([...B64].map((c, i) => [c, i]));
 
+// packages/core/src/madridTime.ts
+function madridOffsetByRule(at) {
+  const year = at.getUTCFullYear();
+  const lastSunday = (month) => {
+    const last = new Date(Date.UTC(year, month + 1, 0));
+    return Date.UTC(year, month, last.getUTCDate() - last.getUTCDay(), 1);
+  };
+  const t = at.getTime();
+  return t >= lastSunday(2) && t < lastSunday(9) ? 120 : 60;
+}
+var formatter;
+function offsetFromIntl(at) {
+  if (formatter === void 0) {
+    try {
+      formatter = new Intl.DateTimeFormat("en-US", {
+        timeZone: "Europe/Madrid",
+        hourCycle: "h23",
+        year: "numeric",
+        month: "numeric",
+        day: "numeric",
+        hour: "numeric",
+        minute: "numeric"
+      });
+    } catch {
+      formatter = null;
+    }
+  }
+  if (!formatter) return null;
+  try {
+    const parts = {};
+    for (const p of formatter.formatToParts(at)) if (p.type !== "literal") parts[p.type] = Number(p.value);
+    const local = Date.UTC(parts.year, parts.month - 1, parts.day, parts.hour % 24, parts.minute);
+    const offset = Math.round((local - Math.floor(at.getTime() / 6e4) * 6e4) / 6e4);
+    return offset === 60 || offset === 120 ? offset : null;
+  } catch {
+    return null;
+  }
+}
+function madridOffsetMinutes(at) {
+  return offsetFromIntl(at) ?? madridOffsetByRule(at);
+}
+function madridTime(at) {
+  const local = new Date(at.getTime() + madridOffsetMinutes(at) * 6e4);
+  return {
+    year: local.getUTCFullYear(),
+    month: local.getUTCMonth() + 1,
+    day: local.getUTCDate(),
+    weekday: (local.getUTCDay() + 6) % 7,
+    minutes: local.getUTCHours() * 60 + local.getUTCMinutes()
+  };
+}
+function fromMadridTime(year, month, day, minutes) {
+  const wall = Date.UTC(year, month - 1, day, 0, minutes);
+  let t = wall - madridOffsetMinutes(new Date(wall)) * 6e4;
+  t = wall - madridOffsetMinutes(new Date(t)) * 6e4;
+  return new Date(t);
+}
+
+// packages/core/src/basketIndex.ts
+var INDEX_BASKET = [
+  // Dairy and eggs
+  "milk",
+  "eggs",
+  "yogurt_plain",
+  "cheese_sliced",
+  // Bakery and pantry
+  "bread_sliced",
+  "rice",
+  "pasta",
+  "olive_oil_ev",
+  "tomato_crushed",
+  "tuna_canned",
+  "chickpeas",
+  "coffee_ground",
+  // Fresh produce
+  "tomatoes",
+  "bananas",
+  "apples",
+  "potatoes",
+  "onions",
+  // Meat
+  "chicken_breast",
+  "ham_cooked",
+  // Drinks
+  "water"
+];
+var INDEX_TIME_MINUTES = 7 * 60;
+function indexMoment(now) {
+  const m = madridTime(now);
+  const monday = fromMadridTime(m.year, m.month, m.day - m.weekday, INDEX_TIME_MINUTES);
+  return monday <= now ? monday : fromMadridTime(m.year, m.month, m.day - m.weekday - 7, INDEX_TIME_MINUTES);
+}
+function previousIndexMoment(at) {
+  const m = madridTime(at);
+  return fromMadridTime(m.year, m.month, m.day - 7, m.minutes);
+}
+function busiestZones(prices) {
+  const counts = /* @__PURE__ */ new Map();
+  for (const p of prices) {
+    if (p.storeId) continue;
+    const zones = counts.get(p.chain) ?? /* @__PURE__ */ new Map();
+    zones.set(p.zone, (zones.get(p.zone) ?? 0) + 1);
+    counts.set(p.chain, zones);
+  }
+  const out = {};
+  for (const [chain, zones] of counts) {
+    out[chain] = [...zones].sort((a, b) => b[1] - a[1] || a[0].localeCompare(b[0]))[0][0];
+  }
+  return out;
+}
+function basketIndexAt(input) {
+  const basket = input.basket ?? INDEX_BASKET;
+  const maxMissingShare = input.maxMissingShare ?? 0.2;
+  const at = input.at.getTime();
+  const oldest = at - ONLINE_EXPIRES_AFTER_DAYS * 864e5;
+  const prices = input.prices.filter((p) => {
+    const t = Date.parse(p.observedAt);
+    return !p.storeId && t <= at && t >= oldest;
+  });
+  const zones = { ...busiestZones(prices), ...input.zones };
+  const wanted = new Set(basket);
+  const products = input.products.filter((p) => p.categoryId && wanted.has(p.categoryId));
+  const chains = new Set(prices.map((p) => p.chain));
+  const stores = [...chains].flatMap((chain) => {
+    const zone = zones[chain];
+    return zone ? [{ id: `index:${chain}`, chain, name: CHAINS[chain].name, zone, lat: 0, lng: 0 }] : [];
+  });
+  const items = basket.filter((id) => CATEGORY_BY_ID[id]).map((id) => ({ id, text: id, categoryId: id, level: { kind: "any" }, quantity: 1 }));
+  const result = compareBasket({ items, stores, products, prices, origin: { lat: 0, lng: 0 }, now: input.at, maxDistanceKm: 1 });
+  const rows = result.ranking.flatMap((b) => {
+    if (b.found === 0) return [];
+    const priced = new Set(b.lines.map((l2) => l2.itemId));
+    const missing = basket.filter((id) => !priced.has(id));
+    const lines = b.lines.map((l2) => ({
+      itemId: l2.itemId,
+      productId: l2.product.id,
+      productName: l2.product.name,
+      brand: l2.product.brand,
+      isOwnBrand: l2.product.isOwnBrand,
+      price: l2.price,
+      cost: l2.cost,
+      observedAt: l2.observedAt,
+      promotion: l2.promotion
+    }));
+    return [{
+      chain: b.store.chain,
+      zone: b.store.zone,
+      total: round(lines.reduce((sum, l2) => sum + l2.cost, 0)),
+      found: lines.length,
+      missing,
+      ranked: missing.length / basket.length <= maxMissingShare,
+      rank: null,
+      lines
+    }];
+  });
+  rows.sort((a, b) => Number(b.ranked) - Number(a.ranked) || (a.ranked ? a.total - b.total : b.found - a.found || a.total - b.total) || a.chain.localeCompare(b.chain));
+  rows.filter((r) => r.ranked).forEach((r, i) => {
+    r.rank = i + 1;
+  });
+  return { at: input.at.toISOString(), chains: rows };
+}
+function indexChanges(current, previous) {
+  const out = {};
+  for (const now of current.chains) {
+    const before = previous.chains.find((c) => c.chain === now.chain);
+    if (!now.ranked || !before?.ranked) continue;
+    const old = new Map(before.lines.map((l2) => [l2.itemId, l2.cost]));
+    const common = now.lines.filter((l2) => old.has(l2.itemId));
+    const was = common.reduce((sum, l2) => sum + old.get(l2.itemId), 0);
+    const is = common.reduce((sum, l2) => sum + l2.cost, 0);
+    if (common.length === 0 || was <= 0) continue;
+    out[now.chain] = { amount: round(is - was), percent: round((is - was) / was * 100, 1), items: common.length };
+  }
+  return out;
+}
+function weeklyBasketIndex(input) {
+  const at = indexMoment(input.now);
+  const zones = { ...busiestZones(input.prices), ...input.zones };
+  const current = basketIndexAt({ ...input, zones, at });
+  const before = basketIndexAt({ ...input, zones, at: previousIndexMoment(at) });
+  const previous = before.chains.some((c) => c.ranked) ? before : null;
+  const used = {};
+  for (const c of [...current.chains, ...previous?.chains ?? []]) used[c.chain] = c.zone;
+  return {
+    basket: [...input.basket ?? INDEX_BASKET],
+    zones: used,
+    current,
+    previous,
+    changes: previous ? indexChanges(current, previous) : {},
+    isSample: input.isSample ?? false
+  };
+}
+
 // ingest/src/database.ts
+import { createRequire } from "node:module";
+import { mkdirSync } from "node:fs";
+import { dirname } from "node:path";
 var { DatabaseSync } = createRequire(import.meta.url)("node:sqlite");
 function openDatabase(path) {
   mkdirSync(dirname(path), { recursive: true });
@@ -522,10 +1096,54 @@ function history(db2, productId) {
   return db2.prepare(`SELECT price, observed_at AS observedAt FROM price_observations
     WHERE product_id=? AND zone=? AND observed_at >= ? ORDER BY observed_at`).all(productId, zone, new Date(Date.now() - 90 * 864e5).toISOString());
 }
+function mainMercadonaZone(db2) {
+  const row = db2.prepare(`SELECT json_extract(data, '$.zone') AS zone, COUNT(*) AS n FROM stores
+    WHERE json_extract(data, '$.chain') = 'mercadona' AND json_extract(data, '$.zone') IS NOT NULL
+    GROUP BY zone ORDER BY n DESC, zone LIMIT 1`).get();
+  return row?.zone ?? "bcn1";
+}
+function weeklyIndex(db2, now = /* @__PURE__ */ new Date()) {
+  const at = indexMoment(now);
+  const from = new Date(previousIndexMoment(at).getTime() - ONLINE_EXPIRES_AFTER_DAYS * 864e5).toISOString();
+  const mercadona = mainMercadonaZone(db2);
+  const basket = [...INDEX_BASKET];
+  const products = db2.prepare(`SELECT data FROM products
+    WHERE json_extract(data, '$.categoryId') IN (${basket.map(() => "?").join(",")})`).all(...basket).map((r) => JSON.parse(r.data));
+  const ids = products.map((p) => p.id);
+  const prices = [];
+  for (let i = 0; i < ids.length; i += 500) {
+    const chunk = ids.slice(i, i + 500);
+    const rows = db2.prepare(`SELECT * FROM price_observations
+      WHERE product_id IN (${chunk.map(() => "?").join(",")}) AND observed_at >= ? AND observed_at <= ?
+        AND (chain <> 'mercadona' OR zone = ?)`).all(...chunk, from, at.toISOString(), mercadona);
+    for (const r of rows) {
+      prices.push({
+        productId: r.product_id,
+        chain: r.chain,
+        zone: r.zone,
+        price: r.price,
+        unitPrice: r.unit_price,
+        promotion: r.promotion ?? void 0,
+        observedAt: r.observed_at,
+        source: r.source
+      });
+    }
+  }
+  return weeklyBasketIndex({ products, prices, now, zones: { mercadona } });
+}
 
 // ingest/src/server.ts
 if (!process.env.DATABASE_PATH) throw new Error("DATABASE_PATH is required");
 var db = openDatabase(process.env.DATABASE_PATH);
+var indexCache = null;
+function cachedWeeklyIndex() {
+  const now = /* @__PURE__ */ new Date();
+  const moment = indexMoment(now).getTime();
+  if (!indexCache || indexCache.moment !== moment || now.getTime() > indexCache.until) {
+    indexCache = { moment, until: now.getTime() + 10 * 6e4, data: weeklyIndex(db, now) };
+  }
+  return indexCache.data;
+}
 var server = createServer((req, res) => {
   res.setHeader("content-type", "application/json; charset=utf-8");
   res.setHeader("x-content-type-options", "nosniff");
@@ -542,6 +1160,7 @@ var server = createServer((req, res) => {
       const counts = db.prepare(`SELECT COUNT(*) AS observations,MAX(observed_at) AS lastImport FROM price_observations`).get();
       data = { status: "ok", database: "sqlite", release: process.env.RELEASE_SHA ?? "local", ...counts };
     } else if (url.pathname === "/api/catalog") data = catalog(db);
+    else if (url.pathname === "/api/index") data = cachedWeeklyIndex();
     else if (url.pathname.startsWith("/api/history/")) data = history(db, decodeURIComponent(url.pathname.slice("/api/history/".length)));
     else {
       res.writeHead(404);
