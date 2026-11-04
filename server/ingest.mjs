@@ -862,6 +862,10 @@ function nearestPostalCode(pos) {
   return best;
 }
 
+// packages/core/src/shareCard.ts
+var B64 = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789-_";
+var B64_INDEX = new Map([...B64].map((c, i) => [c, i]));
+
 // ingest/src/chains/terms.ts
 function genericSearchTerms(lang = "es") {
   return [...new Set(CATEGORIES.map((c) => c.names[lang].toLowerCase()))];

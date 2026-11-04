@@ -453,6 +453,10 @@ var CATEGORY_BY_ID = Object.fromEntries(CATEGORIES.map((c) => [c.id, c]));
 // packages/core/src/freshness.ts
 var DAY_MS = 24 * 60 * 60 * 1e3;
 
+// packages/core/src/shareCard.ts
+var B64 = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789-_";
+var B64_INDEX = new Map([...B64].map((c, i) => [c, i]));
+
 // ingest/src/database.ts
 var { DatabaseSync } = createRequire(import.meta.url)("node:sqlite");
 function openDatabase(path) {
