@@ -57,8 +57,12 @@ data; samples are never mixed with imported prices or real store locations.
 
 `quinsuper-import.timer` runs the local importer at **05:30 Europe/Madrid**,
 including daylight-saving changes. It survives reboot and catches missed runs.
-Price importers: **Mercadona** (whole catalogue, per warehouse) and **Consum**
-(one search per generic item; one online price for all shops, zone `cat`). Each
+Price importers: **Mercadona** (whole catalogue, per warehouse), **Consum**
+(one search per generic item; one online price for all shops, zone `cat`) and
+**bonÀrea** (one search page per generic item, read from the HTML product cards;
+one price for all of Catalonia, zone `cat`). The bonÀrea reader was built and
+tested against a real page captured from this server
+(`ingest/fixtures/retailer-search/`). Each
 chain runs on its own: if one fails, the others still import and the service
 exits with an error so the failure is visible in systemd. A Consum run that finds
 almost nothing is treated as a failure instead of being saved.
@@ -73,9 +77,13 @@ sudo systemctl daemon-reload
 ```
 
 Chains not yet imported: DIA refuses automated requests (HTTP 403, as found by
-the open-source Preuet project). Bonpreu/Esclat and bonÀrea have no bulk catalogue
-API; their importers wait for a saved real page to build against. Alcampo and
-Caprabo are untested.
+the open-source Preuet project). Bonpreu/Esclat's search also returns HTTP 403 to
+this server (checked 4 Nov 2026), so an unattended importer isn't possible without
+their permission or a partnership. Alcampo and Caprabo are untested.
+
+Products are sorted into generic items at import time, so classification fixes
+reach existing products at the next import. Products that no longer match stop
+getting new prices and drop out of the catalogue after 7 days.
 
 The old Supabase GitHub import
 workflow was replaced with this local timer so SQLite stays on the server.

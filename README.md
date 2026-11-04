@@ -13,7 +13,7 @@
 - **Product search (F2)** in any of the three languages, plus a **product page (F5)**: price per chain, unit prices, own-brand equivalents, good / normal / high price label, 90-day history (F6).
 - **Freshness labels (F8)** on every price: source and time. Prices older than 3 days are flagged; older than 7 days are dropped.
 
-The deployed app reads real prices from a **local SQLite database** through a read-only API. The daily importer runs on the same server. When no recent prices are available, explicitly labelled sample data is shown instead. Prices are imported for **Mercadona** and **Consum** (added as a seventh chain: open catalogue, many shops around Barcelona). Store locations come from OpenStreetMap, refreshed weekly by the same import; chains without prices yet are named in the app instead of ranked. DIA refuses automated requests; Bonpreu/Esclat and bonÀrea importers need a real page sample first.
+The deployed app reads real prices from a **local SQLite database** through a read-only API. The daily importer runs on the same server. When no recent prices are available, explicitly labelled sample data is shown instead. Prices are imported for **Mercadona**, **Consum** (added as a seventh chain: open catalogue, many shops around Barcelona) and **bonÀrea**. Store locations come from OpenStreetMap, refreshed weekly by the same import; chains without prices yet are named in the app instead of ranked. DIA and Bonpreu/Esclat refuse automated requests (HTTP 403).
 
 ## Repository layout
 
@@ -70,6 +70,6 @@ The owner asked to skip arranging the Spanish IP lawyer review on 4 November 202
 
 ## Next milestones
 
-- Price importers for Bonpreu/Esclat, bonÀrea, Alcampo and Caprabo (DIA blocks automated requests)
+- Price importers for Alcampo and Caprabo; DIA and Bonpreu/Esclat block automated requests (partnership or receipts instead)
 - Price alerts with push notifications (F7), barcode scanner (F9), shared lists (F10), share card (F11), weekly basket index (F12)
 - v1.1: receipt scanner (UC5), opening hours, flatmate cost splitting

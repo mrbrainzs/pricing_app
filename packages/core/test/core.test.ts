@@ -4,6 +4,7 @@ import {
   CATEGORIES,
   classifyProduct,
   compareBasket,
+  detectBrand,
   editDistance,
   findEquivalents,
   freshness,
@@ -110,6 +111,33 @@ describe('product classification', () => {
     ['Huevos frescos L 12 ud', 'eggs'],
   ])('%s -> %s', (name, expected) => {
     expect(classifyProduct(name)).toBe(expected);
+  });
+
+  it.each([
+    // Seen on real shop pages: the item word appears, but it isn't that item.
+    ['Zumo con leche tropical paq. 6 u. de 200 ml', null],
+    ['Gel de baño IYOU leche y miel', null],
+    ['Leche continuación Nestlé nativa 3', null],
+    ['Youwup leche gato', null],
+    ['Nivea sun leche f-50.', null],
+    ['Batlle lechuga trocadero', null],
+    ['Yogur griego azucarado 4 u. de 125 g', null],
+    ['Petit fresa y plátano paq. de 6 u. de 50 g', null],
+    ['Rondo naranja Mandul', null],
+    ['Rosquilletas sin sal añadida Pastor', null],
+    ['Azúcar moreno de caña 1 kg', 'sugar'],
+    ['Naranjas para zumo 4 kg', 'oranges'],
+    ['Leche entera Pascual paq. de 6 brics', 'milk'],
+  ])('real-world name %s -> %s', (name, expected) => {
+    expect(classifyProduct(name)).toBe(expected);
+  });
+
+  it('recognises well-known brands, longest name first', () => {
+    expect(detectBrand('Leche entera Pascual paq. de 6 brics')).toBe('Pascual');
+    expect(detectBrand('Leche Central Lechera Asturiana 1 L')).toBe('Central Lechera Asturiana');
+    expect(detectBrand('Leche UHT semidesnatada Ato')).toBe('ATO');
+    expect(detectBrand('Leche semidesnatada paq. de 6 brics')).toBeUndefined();
+    expect(detectBrand('Patatas fritas onduladas')).toBeUndefined();
   });
 
   it('ignores words from the brand name', () => {

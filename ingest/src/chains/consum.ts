@@ -4,9 +4,10 @@
  * single price zone. We search once per generic item in our catalogue and keep only
  * products that classify into one of those items.
  */
-import { CATEGORIES, classifyProduct, isOwnBrand, parseSize, round, type Size } from '@pricing/core';
+import { classifyProduct, isOwnBrand, parseSize, round, type Size } from '@pricing/core';
 import type { PoliteClient } from '../http';
 import type { ScrapedPrice, ScrapedProduct, ScrapeResult } from '../types';
+import { genericSearchTerms } from './terms';
 
 export const CONSUM_API = 'https://tienda.consum.es/api/rest/V1.0/catalog/product';
 /** Consum's online price applies everywhere; stores use the same zone (see CHAINS.consum). */
@@ -114,7 +115,7 @@ export function parseConsumPrice(item: ConsumProduct, size: Size | null, observe
 
 /** One search term per generic item, in Spanish (the shop's language). */
 export function consumSearchTerms(): string[] {
-  return [...new Set(CATEGORIES.map((c) => c.names.es.toLowerCase()))];
+  return genericSearchTerms('es');
 }
 
 export interface ConsumOptions {

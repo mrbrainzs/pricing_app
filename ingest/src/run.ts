@@ -5,11 +5,11 @@
  *   DATABASE_PATH=/var/lib/quinsuper/prices.sqlite npm run ingest -w @pricing/ingest -- --chain all --sink sqlite
  *
  * Options:
- *   --chain        mercadona, consum, a comma-separated list, or all
+ *   --chain        mercadona, consum, bonarea, a comma-separated list, or all
  *   --postal       Mercadona: comma-separated postal codes; each distinct pricing zone is imported once
  *   --sink         json (writes ./out) or sqlite (local DATABASE_PATH)
  *   --details      Mercadona: new (default) fetches brand/EAN only for unseen products; all; none
- *   --max-categories N   stop early, for test runs (Mercadona categories / Consum search terms)
+ *   --max-categories N   stop early, for test runs (Mercadona categories / Consum and bonÀrea search terms)
  *   --stores       auto (default): with sqlite, refresh store locations from OpenStreetMap
  *                  when they are more than 7 days old; force; skip; only (stores, no prices)
  *
@@ -17,13 +17,16 @@
  * command exits with an error at the end so the failure shows in systemd.
  */
 import { parseArgs } from 'node:util';
+import { scrapeBonarea } from './chains/bonarea';
 import { consumSearchTerms, scrapeConsum } from './chains/consum';
+import { genericSearchTerms } from './chains/terms';
 import { mercadonaWarehouse, scrapeMercadona } from './chains/mercadona';
 import { storeZones } from './database';
 import { PoliteClient } from './http';
 import { JsonSink, type Sink } from './sink';
 import { SqliteSink } from './sqliteSink';
 import { refreshStores, storesDue } from './stores/refresh';
+import type { ChainId } from '@pricing/core';
 import type { ScrapeResult } from './types';
 
 const DEFAULT_POSTAL_CODES = ['08001', '08012', '08014', '08018', '08027', '08028'];
@@ -38,7 +41,7 @@ interface ImportContext {
 
 type Importer = (ctx: ImportContext, log: (m: string) => void) => Promise<void>;
 
-async function save(ctx: ImportContext, chain: 'mercadona' | 'consum', result: ScrapeResult, log: (m: string) => void, label: string) {
+async function save(ctx: ImportContext, chain: ChainId, result: ScrapeResult, log: (m: string) => void, label: string) {
   const classified = result.products.filter((p) => p.categoryId).length;
   log(`${label}: ${result.products.length} products (${classified} matched to generic items), ${result.prices.length} prices`);
   const saved = await ctx.sink.save(chain, result.products, result.prices);
@@ -83,7 +86,17 @@ const importConsum: Importer = async (ctx, log) => {
   await save(ctx, 'consum', result, log, 'online shop');
 };
 
-const IMPORTERS: Record<string, Importer> = { mercadona: importMercadona, consum: importConsum };
+const importBonarea: Importer = async (ctx, log) => {
+  const terms = genericSearchTerms('es').slice(0, ctx.maxCategories);
+  const result = await scrapeBonarea(ctx.http, { terms, log });
+  // bonÀrea's search pages are HTML: a near-empty result means the page layout changed.
+  if (result.products.length < Math.min(20, terms.length)) {
+    throw new Error(`only ${result.products.length} products found for ${terms.length} searches; the page layout may have changed`);
+  }
+  await save(ctx, 'bonarea', result, log, 'online shop');
+};
+
+const IMPORTERS: Record<string, Importer> = { mercadona: importMercadona, consum: importConsum, bonarea: importBonarea };
 
 async function main() {
   const { values } = parseArgs({

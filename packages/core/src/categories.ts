@@ -120,7 +120,7 @@ export const CATEGORIES: Category[] = [
     id: 'sugar', group: 'pantry', defaultSize: kg(1),
     names: { ca: 'Sucre', es: 'Azúcar', en: 'Sugar' },
     synonyms: ['sucre blanc', 'azucar blanco', 'white sugar'],
-    include: ['azucar', 'sucre'],
+    include: ['azucar$', 'sucre$'],
     exclude: ['sin azucar', 'sense sucre', 'glass', 'galleta', 'cacao', 'chocolate', 'mermelada', 'bebida', 'refresco', 'cereal', 'caramelo', 'chicle', 'xocolata', 'beguda', 'edulcorante'],
   },
   {
@@ -196,7 +196,7 @@ export const CATEGORIES: Category[] = [
     names: { ca: 'Taronges', es: 'Naranjas', en: 'Oranges' },
     synonyms: ['taronja', 'naranja', 'orange'],
     include: ['naranja', 'taronja', 'taronges'],
-    exclude: ['zumo', 'mermelada', 'bebida', 'refresco', 'sabor', 'piel', 'chocolate', 'naranjada', 'suc', 'melmelada', 'gajos en almibar'],
+    exclude: ['mermelada', 'bebida', 'refresco', 'sabor', 'piel', 'chocolate', 'naranjada', 'melmelada', 'gajos en almibar'],
   },
   {
     id: 'potatoes', group: 'produce', defaultSize: kg(1),
@@ -327,18 +327,33 @@ interface CompiledRule {
   exclude: RegExp[];
 }
 
-function phraseRegex(phrase: string): RegExp {
+/**
+ * Include phrases must start within the first two words of the name, so "Leche entera"
+ * is milk but "Zumo con leche" or "Gel de baño leche y miel" are not. Exclude phrases
+ * match anywhere. A trailing "$" requires a whole word ("azucar$" skips "azucarado").
+ */
+function phraseRegex(phrase: string, position: 'first' | 'start' | 'anywhere'): RegExp {
   const whole = phrase.endsWith('$');
   const p = normalize(whole ? phrase.slice(0, -1) : phrase).replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
-  return new RegExp(`(?:^| )${p}${whole ? '(?= |$)' : ''}`);
+  const prefix = position === 'first' ? '^' : position === 'start' ? '^(?:[^ ]+ )?' : '(?:^| )';
+  return new RegExp(`${prefix}${p}${whole ? '(?= |$)' : ''}`);
 }
 
+/** Never groceries we compare: seeds, pet food, sun lotion, body care, baby formula. */
+const NOT_GROCERIES = [
+  'semilla', 'llavor', 'mascota', 'pienso', 'comedero', 'gato$', 'gatos$', 'gat$', 'perro$', 'perros$', 'gos$',
+  'aftersun', 'solar$', 'sun$', 'spf', 'corporal', 'body milk', 'desmaquillante', 'juguete', 'maceta',
+  'leche de continuacion', 'leche continuacion', 'leche inicio', 'leche de inicio', 'llet de continuacio',
+];
+
 let compiled: CompiledRule[] | null = null;
+let notGroceries: RegExp[] | null = null;
 function rules(): CompiledRule[] {
   compiled ??= CATEGORIES.map((c) => ({
     id: c.id,
-    include: c.include.map(phraseRegex),
-    exclude: (c.exclude ?? []).map(phraseRegex),
+    // Fresh produce names start with the product ("Naranjas de mesa"); "Rondo naranja" is a pastry.
+    include: c.include.map((ph) => phraseRegex(ph, c.group === 'produce' ? 'first' : 'start')),
+    exclude: (c.exclude ?? []).map((ph) => phraseRegex(ph, 'anywhere')),
   }));
   return compiled;
 }
@@ -351,6 +366,8 @@ export function classifyProduct(name: string, brand?: string | null): string | n
   let n = normalize(name);
   const b = brand ? normalize(brand) : '';
   if (b && b.length >= 3) n = ` ${n} `.replace(` ${b} `, ' ').trim();
+  notGroceries ??= NOT_GROCERIES.map((ph) => phraseRegex(ph, 'anywhere'));
+  if (notGroceries.some((re) => re.test(n))) return null;
   for (const r of rules()) {
     if (r.include.some((re) => re.test(n)) && !r.exclude.some((re) => re.test(n))) return r.id;
   }

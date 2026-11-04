@@ -2,6 +2,7 @@ export * from './types';
 export * from './text';
 export * from './units';
 export * from './chains';
+export * from './brands';
 export * from './categories';
 export * from './list';
 export * from './search';
