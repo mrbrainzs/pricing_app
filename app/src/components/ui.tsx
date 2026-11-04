@@ -182,7 +182,7 @@ const styles = StyleSheet.create({
   card: { borderRadius: radius.lg, padding: space.lg, gap: space.sm },
   button: { minHeight: 48, borderRadius: radius.md, paddingHorizontal: space.lg, alignItems: 'center', justifyContent: 'center' },
   buttonCompact: { minHeight: 36, paddingHorizontal: space.md },
-  buttonText: { fontSize: 16, fontWeight: '600' },
+  buttonText: { fontSize: 16, fontWeight: '600', textAlign: 'center' },
   chip: { flexDirection: 'row', alignItems: 'center', gap: 6, paddingHorizontal: space.md, minHeight: 36, borderRadius: radius.pill },
   chipText: { fontSize: 14, fontWeight: '500' },
   dot: { width: 8, height: 8, borderRadius: 4 },

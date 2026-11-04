@@ -7,6 +7,7 @@ export * from './categories';
 export * from './list';
 export * from './search';
 export * from './matching';
+export * from './barcode';
 export * from './freshness';
 export * from './priceLabel';
 export * from './geo';

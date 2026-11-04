@@ -1,5 +1,5 @@
 import { normalize, tokens } from './text';
-import type { MatchType, Product } from './types';
+import type { MatchType, Product, Size } from './types';
 import { sizeRatio } from './units';
 
 export interface Equivalent {
@@ -30,6 +30,13 @@ export function isSameProductOtherSize(a: Product, b: Product): boolean {
   return jaccard(identityWords(a), identityWords(b)) >= 0.6;
 }
 
+/** An own-brand product of the same generic item, in a pack between 0.4× and 2.5× the given size. */
+export function isOwnBrandEquivalent(p: Product, categoryId: string, size: Size | null): boolean {
+  if (!p.isOwnBrand || p.categoryId !== categoryId) return false;
+  const ratio = sizeRatio(p.size, size);
+  return ratio !== null && ratio >= 0.4 && ratio <= 2.5;
+}
+
 /**
  * Matching rules from the spec: exact EAN match first; then the same product in another
  * size; then own-brand equivalents in the same category at a similar size.
@@ -48,12 +55,7 @@ export function findEquivalents(target: Product, products: Product[]): Equivalen
   }
   for (const p of products) if (isSameProductOtherSize(target, p)) add(p, 'same_product_other_size');
   if (target.categoryId) {
-    for (const p of products) {
-      if (!p.isOwnBrand || p.categoryId !== target.categoryId) continue;
-      const ratio = sizeRatio(p.size, target.size);
-      if (ratio === null || ratio < 0.4 || ratio > 2.5) continue;
-      add(p, 'own_brand_equivalent');
-    }
+    for (const p of products) if (isOwnBrandEquivalent(p, target.categoryId, target.size)) add(p, 'own_brand_equivalent');
   }
   return out;
 }
