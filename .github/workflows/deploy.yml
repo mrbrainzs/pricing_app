@@ -53,6 +53,21 @@ jobs:
           # The separate worktree uses checkout's authenticated repository configuration.
           auth_header=$(git config --get http.https://github.com/.extraheader)
           git -C /tmp/quinsuper-publish -c http.https://github.com/.extraheader= -c http.https://github.com/.extraheader="$auth_header" push origin HEAD:refs/heads/deploy/quinsuper
+      - name: Verify live server activated this release
+        shell: bash
+        run: |
+          set -euo pipefail
+          for attempt in $(seq 1 60); do
+            actual=$(curl -fsS --max-time 10 https://quinsuper.trottedmedia.com/api/health | jq -r '.release' || true)
+            if [ "$actual" = "$GITHUB_SHA" ]; then
+              test "$(curl -sS --max-time 10 -o /dev/null -w '%{http_code}' https://quinsuper.trottedmedia.com/)" = 200
+              echo "Verified live release $GITHUB_SHA"
+              exit 0
+            fi
+            sleep 10
+          done
+          echo 'Server has not activated this build. Check quinsuper-update/import services.' >&2
+          exit 1
       - name: Deployment details
         run: |
           echo 'Server checks the deployment branch every minute and performs its own API health check.' >> "$GITHUB_STEP_SUMMARY"

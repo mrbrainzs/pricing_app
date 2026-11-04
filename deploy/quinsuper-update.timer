@@ -3,6 +3,7 @@ Description=Check GitHub for a tested QuinSuper release every minute
 [Timer]
 OnBootSec=30s
 OnUnitActiveSec=60s
+AccuracySec=5s
 Unit=quinsuper-update.service
 [Install]
 WantedBy=timers.target

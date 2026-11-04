@@ -8,7 +8,9 @@ if [ ! -d "$repo" ]; then
   git init --bare "$repo"
   git --git-dir="$repo" remote add origin https://github.com/mrbrainzs/pricing_app.git
 fi
-git --git-dir="$repo" fetch --depth=1 origin refs/heads/deploy/quinsuper:refs/heads/deploy/quinsuper
+# This is a shallow mirror: advance its build pointer even when the boundary
+# hides ancestry. Retained release directories provide the rollback history.
+git --git-dir="$repo" fetch --depth=1 origin +refs/heads/deploy/quinsuper:refs/heads/deploy/quinsuper
 revision=$(git --git-dir="$repo" rev-parse refs/heads/deploy/quinsuper)
 target="$base/releases/$revision"
 if [ "$(readlink -f "$base/current" || true)" = "$target" ]; then exit 0; fi

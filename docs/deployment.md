@@ -11,7 +11,9 @@ Build branch: `deploy/quinsuper` (generated files only; do not edit)
 from GitHub Actions. It installs the locked dependencies, runs tests, TypeScript
 checks and Expo lint, builds the web app and bundles the Node API/importer.
 Only after all checks pass does it publish the build branch using GitHub's
-built-in `GITHUB_TOKEN`. No repository secrets or server SSH keys are required.
+built-in `GITHUB_TOKEN`. The workflow then verifies that the HTTPS health endpoint
+reports the exact source commit and that the home page returns HTTP 200.
+No repository secrets or server SSH keys are required.
 The public repository must remain readable by the server for this mechanism.
 
 `quinsuper-update.timer` checks the build branch every minute. A new release
