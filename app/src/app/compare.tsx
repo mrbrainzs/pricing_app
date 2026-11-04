@@ -1,11 +1,13 @@
-import { CHAINS, compareBasket, type BasketLine, type ListItem, type StoreBasket } from '@pricing/core';
+import { CHAINS, compareBasket, encodeShareCard, shareCardFromRanking, type BasketLine, type ListItem, type StoreBasket } from '@pricing/core';
+import { router } from 'expo-router';
 import { useMemo, useState } from 'react';
-import { ActivityIndicator, Linking, Pressable, Share, View } from 'react-native';
+import { ActivityIndicator, Linking, Pressable, View } from 'react-native';
 
 import { itemNames } from '@/components/ListItemRow';
 import { sourceLabel, unitPriceLabel } from '@/components/format';
+import { todayLocal } from '@/components/shareLink';
 import { Badge, Banner, Button, Card, Chip, Divider, Row, Screen, T } from '@/components/ui';
-import { APP_NAME, km, money } from '@/i18n';
+import { km, money } from '@/i18n';
 import { useApp } from '@/state/AppState';
 import { space, useColors } from '@/theme';
 
@@ -37,8 +39,9 @@ function Lines({ lines, items }: { lines: BasketLine[]; items: ListItem[] }) {
   );
 }
 
-function StoreCard({ basket, rank, items }: { basket: StoreBasket; rank: number; items: ListItem[] }) {
-  const { settings, t } = useApp();
+function StoreCard({ ranking, rank, items }: { ranking: StoreBasket[]; rank: number; items: ListItem[] }) {
+  const { settings, catalog, t } = useApp();
+  const basket = ranking[rank]!;
   const c = useColors();
   const lang = settings.lang;
   const [open, setOpen] = useState(rank === 0);
@@ -46,19 +49,10 @@ function StoreCard({ basket, rank, items }: { basket: StoreBasket; rank: number;
   const isBest = rank === 0 && !basket.flagged;
   const missingNames = basket.missing.map((id) => items.find((i) => i.id === id)).filter(Boolean).map((i) => itemNames(i!, lang).main);
 
-  const share = async () => {
-    const message = t('shareText', {
-      store: basket.store.name,
-      total: money(basket.total, lang),
-      found: basket.found,
-      total_items: basket.requested,
-      app: APP_NAME,
-    });
-    try {
-      await Share.share({ message });
-    } catch {
-      Linking.openURL(`https://wa.me/?text=${encodeURIComponent(message)}`).catch(() => {});
-    }
+  // F11: preview the result card, then share its link (and an image on native).
+  const share = () => {
+    const card = shareCardFromRanking({ ranking, index: rank, items, lang, date: todayLocal(), sample: !!catalog?.isSample });
+    router.push({ pathname: '/share-card', params: { d: encodeShareCard(card) } });
   };
 
   return (
@@ -177,7 +171,7 @@ export default function CompareScreen() {
       ) : null}
 
       {result.ranking.map((basket, i) => (
-        <StoreCard key={basket.store.id} basket={basket} rank={i} items={items} />
+        <StoreCard key={basket.store.id} ranking={result.ranking} rank={i} items={items} />
       ))}
 
       {result.ranking.some((b) => b.missing.length > 0) ? <T variant="small">{t('missingNote')}</T> : null}
