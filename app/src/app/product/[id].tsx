@@ -1,4 +1,4 @@
-import { CATEGORY_BY_ID, CHAINS, findEquivalents, makeListItem, priceStats, type PricePoint, type Product } from '@pricing/core';
+import { CATEGORY_BY_ID, CHAINS, findEquivalents, formatBarcode, makeListItem, priceStats, type PricePoint, type Product } from '@pricing/core';
 import { router, Stack, useLocalSearchParams } from 'expo-router';
 import { useEffect, useMemo, useState } from 'react';
 import { Pressable, View } from 'react-native';
@@ -121,6 +121,8 @@ export default function ProductScreen() {
           {ownBrand.map(row)}
         </Card>
       ) : null}
+
+      {product.ean ? <T variant="small" style={{ textAlign: 'center' }}>{t('barcodeTitle')}: {formatBarcode(product.ean)}</T> : null}
     </Screen>
   );
 }

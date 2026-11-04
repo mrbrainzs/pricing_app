@@ -1,10 +1,11 @@
-import { CHAINS, groupHits, searchProducts } from '@pricing/core';
-import { router } from 'expo-router';
+import { CHAINS, groupHits, parseBarcode, searchProducts } from '@pricing/core';
+import { router, useLocalSearchParams } from 'expo-router';
 import { useMemo, useState } from 'react';
 import { Pressable, View } from 'react-native';
 
 import { unitPriceLabel } from '@/components/format';
-import { Badge, Card, Input, Row, Screen, T } from '@/components/ui';
+import { ScanButton } from '@/components/ScanButton';
+import { Badge, Button, Card, Input, Row, Screen, T } from '@/components/ui';
 import { latestByProduct } from '@/data/prices';
 import { money } from '@/i18n';
 import { useApp } from '@/state/AppState';
@@ -13,7 +14,15 @@ import { space } from '@/theme';
 export default function SearchScreen() {
   const { catalog, settings, t } = useApp();
   const lang = settings.lang;
-  const [query, setQuery] = useState('');
+  // Prefilled from the barcode screen ("search by name").
+  const { q } = useLocalSearchParams<{ q?: string }>();
+  const [query, setQuery] = useState(q ?? '');
+  const [prefill, setPrefill] = useState(q);
+  if (q !== prefill) {
+    setPrefill(q);
+    if (q) setQuery(q);
+  }
+  const typedCode = parseBarcode(query);
   const latest = useMemo(() => (catalog ? latestByProduct(catalog.prices) : new Map()), [catalog]);
 
   const groups = useMemo(() => {
@@ -35,7 +44,10 @@ export default function SearchScreen() {
 
   return (
     <Screen>
-      <T variant="title">{t('searchTitle')}</T>
+      <Row style={{ justifyContent: 'space-between' }}>
+        <T variant="title" style={{ flexShrink: 1 }}>{t('searchTitle')}</T>
+        <ScanButton />
+      </Row>
       <Input
         value={query}
         onChangeText={setQuery}
@@ -44,7 +56,13 @@ export default function SearchScreen() {
         returnKeyType="search"
         accessibilityLabel={t('searchPlaceholder')}
       />
-      {query.trim().length < 2 ? <T variant="muted">{t('searchEmpty')}</T> : groups.length === 0 ? <T variant="muted">{t('noResults')}</T> : null}
+      {typedCode ? (
+        <Button variant="secondary" label={t('lookUpBarcode', { code: typedCode.digits })} onPress={() => router.push(`/barcode/${typedCode.digits}`)} />
+      ) : query.trim().length < 2 ? (
+        <T variant="muted">{t('searchEmpty')}</T>
+      ) : groups.length === 0 ? (
+        <T variant="muted">{t('noResults')}</T>
+      ) : null}
       <View style={{ gap: space.sm }}>
         {groups.map((g) => {
           const best = g.priced[0]!;

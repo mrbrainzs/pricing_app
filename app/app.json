@@ -49,6 +49,14 @@
         {
           "locationWhenInUsePermission": "Quin Súper uses your location to find supermarkets near you."
         }
+      ],
+      [
+        "expo-camera",
+        {
+          "cameraPermission": "Quin Súper uses the camera to scan product barcodes.",
+          "microphonePermission": false,
+          "recordAudioAndroid": false
+        }
       ]
     ],
     "experiments": {
