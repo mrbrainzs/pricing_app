@@ -12,6 +12,7 @@ import {
   normalize,
   parseListText,
   parseSize,
+  plausibleUnitPrice,
   priceStats,
   resolveItemText,
   searchProducts,
@@ -45,6 +46,26 @@ describe('units', () => {
     ['Leche 6 bricks x 1 l', { amount: 6, unit: 'l' }],
   ])('parses %s', (text, size) => {
     expect(parseSize(text)).toEqual(size);
+  });
+});
+
+describe('dozens and washes', () => {
+  it.each([
+    ['Huevo Ecológico L-XL 1/2 Docena 0,5 Dc', { amount: 6, unit: 'unit' }],
+    ['Huevos S/M Medianos 24 Unidades 2 Dc', { amount: 24, unit: 'unit' }],
+    ['Detergente Líquido 30 Lv', { amount: 30, unit: 'unit' }],
+  ])('parses %s', (text, size) => {
+    expect(parseSize(text)).toEqual(size);
+  });
+});
+
+describe('plausible unit prices', () => {
+  it('rejects prices no real product of the item could have', () => {
+    expect(plausibleUnitPrice('water', 137.4, 'l')).toBe(false); // "Agua Brava" cologne
+    expect(plausibleUnitPrice('water', 0.5, 'l')).toBe(true);
+    expect(plausibleUnitPrice('eggs', 0.25, 'unit')).toBe(true);
+    expect(plausibleUnitPrice('eggs', 4.8, 'unit')).toBe(false);
+    expect(plausibleUnitPrice('toothpaste', 1.75, 'unit')).toBe(true); // other unit: can't judge
   });
 });
 

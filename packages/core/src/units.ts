@@ -37,6 +37,9 @@ const UNIT_WORDS: Record<string, { unit: BaseUnit; factor: number }> = {
   rentades: { unit: 'unit', factor: 1 },
   dosis: { unit: 'unit', factor: 1 },
   washes: { unit: 'unit', factor: 1 },
+  lv: { unit: 'unit', factor: 1 },
+  // "0,5 Dc" = half a dozen (Consum). Full words are left out: "1/2 docena" would read as 2 dozen.
+  dc: { unit: 'unit', factor: 12 },
 };
 
 const NUM = String.raw`(\d+(?:[.,]\d+)?)`;

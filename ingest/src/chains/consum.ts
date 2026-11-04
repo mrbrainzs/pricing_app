@@ -47,6 +47,8 @@ const UNIT_TYPES: Record<string, { unit: Size['unit']; per: number }> = {
   '100 gr': { unit: 'kg', per: 0.1 },
   '1 ud': { unit: 'unit', per: 1 },
   '1 u': { unit: 'unit', per: 1 },
+  '1 dc': { unit: 'unit', per: 12 },
+  '1 docena': { unit: 'unit', per: 12 },
 };
 
 /** The regular shelf price (id "PRICE"), and an offer price when one is listed. */
@@ -73,11 +75,35 @@ export function consumSize(item: ConsumProduct): Size | null {
   return parseSize(displayName(item));
 }
 
+/**
+ * Eggs and detergent are counted in Consum's names, not by weight: "Huevo Campero M Decena
+ * 0,83 Dc", "1/2 Docena", "24 Unidades"; "Detergente Líquido 30 Lv" (30 washes; "80 L" on
+ * detergents is washes too, not litres).
+ */
+export function countFromName(name: string, categoryId: string | null): Size | null {
+  const n = name.toLowerCase();
+  if (categoryId === 'eggs') {
+    const units = n.match(/(\d+)\s*(?:unidades|uds?\.?|u\.)(?:\s|$)/);
+    if (units) return { amount: Number(units[1]), unit: 'unit' };
+    if (/1\/2\s*docena|media docena/.test(n)) return { amount: 6, unit: 'unit' };
+    if (/\bdecena\b/.test(n)) return { amount: 10, unit: 'unit' };
+    const dozens = n.match(/(\d+(?:[.,]\d+)?)\s*(?:dc|docenas?)\b/);
+    if (dozens) return { amount: Math.round(Number(dozens[1]!.replace(',', '.')) * 12), unit: 'unit' };
+    if (/\bdocena\b/.test(n)) return { amount: 12, unit: 'unit' };
+  }
+  if (categoryId === 'laundry_detergent') {
+    const washes = n.match(/(\d+)\s*(?:lv|lavados|dosis|l)\b/);
+    if (washes && Number(washes[1]) >= 10) return { amount: Number(washes[1]), unit: 'unit' };
+  }
+  return null;
+}
+
 export function parseConsumProduct(item: ConsumProduct): ScrapedProduct | null {
   const name = displayName(item);
   if (!name || item.id === undefined || item.id === null) return null;
   const brand = item.productData?.brand?.name?.trim() || undefined;
   const ean = item.ean && /^\d{8,14}$/.test(item.ean.trim()) ? item.ean.trim() : undefined;
+  const categoryId = classifyProduct(name, brand);
   return {
     chain: 'consum',
     chainProductId: String(item.id),
@@ -85,8 +111,8 @@ export function parseConsumProduct(item: ConsumProduct): ScrapedProduct | null {
     brand,
     ean,
     isOwnBrand: isOwnBrand('consum', brand),
-    categoryId: classifyProduct(name, brand),
-    size: consumSize(item),
+    categoryId,
+    size: countFromName(name, categoryId) ?? consumSize(item),
     imageUrl: item.productData?.imageURL ?? undefined,
   };
 }

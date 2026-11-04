@@ -1,4 +1,4 @@
-import { CATEGORY_BY_ID } from './categories';
+import { CATEGORY_BY_ID, plausibleUnitPrice } from './categories';
 import { freshness, type Freshness, isUsable } from './freshness';
 import { distanceKm, type LatLng } from './geo';
 import { searchProducts } from './search';
@@ -123,6 +123,7 @@ function lineFor(item: ListItem, product: Product, obs: PriceObservation, now: D
     const ratio = sizeRatio(product.size, def);
     const maxRatio = category?.maxPackRatio ?? MAX_SIZE_RATIO;
     if (ratio === null || ratio < MIN_SIZE_RATIO || ratio > maxRatio || unitPrice === null) return null;
+    if (!plausibleUnitPrice(item.categoryId!, unitPrice, product.size?.unit)) return null;
     cost = unitPrice * def.amount * item.quantity;
   } else {
     cost = obs.price * item.quantity;

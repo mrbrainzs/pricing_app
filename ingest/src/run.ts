@@ -27,7 +27,7 @@ import { PoliteClient } from './http';
 import { JsonSink, type Sink } from './sink';
 import { SqliteSink } from './sqliteSink';
 import { refreshStores, storesDue } from './stores/refresh';
-import { CATEGORIES, type ChainId } from '@pricing/core';
+import { CATEGORIES, plausibleUnitPrice, type ChainId } from '@pricing/core';
 import type { ScrapeResult } from './types';
 
 const DEFAULT_POSTAL_CODES = ['08001', '08012', '08014', '08018', '08027', '08028'];
@@ -46,6 +46,17 @@ type Importer = (ctx: ImportContext, log: (m: string) => void) => Promise<void>;
 async function save(ctx: ImportContext, chain: ChainId, result: ScrapeResult, log: (m: string) => void, label: string) {
   const classified = result.products.filter((p) => p.categoryId).length;
   log(`${label}: ${result.products.length} products (${classified} matched to generic items), ${result.prices.length} prices`);
+  // A unit price no real product of that item could have means a wrong match or misread size:
+  // keep the product (it still shows in search) but take it out of the item.
+  const priceById = new Map(result.prices.map((p) => [p.chainProductId, p]));
+  const implausible: string[] = [];
+  for (const p of result.products) {
+    if (p.categoryId && !plausibleUnitPrice(p.categoryId, priceById.get(p.chainProductId)?.unitPrice ?? null, p.size?.unit)) {
+      implausible.push(`${p.name} (${p.categoryId})`);
+      p.categoryId = null;
+    }
+  }
+  if (implausible.length) log(`taken out of their item for an implausible unit price: ${implausible.slice(0, 10).join(' | ')}${implausible.length > 10 ? ` … +${implausible.length - 10}` : ''}`);
   // Coverage per generic item, so gaps (an item with no products at this chain) show in the log.
   const perItem = new Map<string, number>();
   for (const p of result.products) if (p.categoryId) perItem.set(p.categoryId, (perItem.get(p.categoryId) ?? 0) + 1);

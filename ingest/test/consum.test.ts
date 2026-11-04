@@ -1,5 +1,5 @@
 import { describe, expect, it, vi } from 'vitest';
-import { consumSearchTerms, parseConsumPrice, parseConsumProduct, scrapeConsum, type ConsumProduct } from '../src/chains/consum';
+import { consumSearchTerms, countFromName, parseConsumPrice, parseConsumProduct, scrapeConsum, type ConsumProduct } from '../src/chains/consum';
 import { PoliteClient } from '../src/http';
 
 // Hand-written items in the shape of tienda.consum.es/api/rest/V1.0/catalog/product.
@@ -48,6 +48,23 @@ describe('Consum parsing', () => {
     const p = parseConsumProduct(yogurt)!;
     expect(p).toMatchObject({ categoryId: 'yogurt_plain', size: { amount: 0.5, unit: 'kg' } });
     expect(parseConsumPrice(yogurt, p.size, 'x')?.unitPrice).toBe(2.4);
+  });
+
+  it.each([
+    // Real Consum names from the live catalogue (Nov 2026).
+    ['Huevo Ecológico L-XL 1/2 Docena 0,5 Dc', 'eggs', 6],
+    ['Huevo Campero M Decena 0,83 Dc', 'eggs', 10],
+    ['Huevos S/M Medianos 24 Unidades 2 Dc', 'eggs', 24],
+    ['Huevo XL Jumbo 1/2 Docena 0,5 Dc', 'eggs', 6],
+    ['Detergente Líquido Adiós al Separar 30 Lv', 'laundry_detergent', 30],
+    ['Detergente Líquido Gel Azul 80 L', 'laundry_detergent', 80],
+  ])('counts "%s" as units', (name, cat, n) => {
+    expect(countFromName(name, cat)).toEqual({ amount: n, unit: 'unit' });
+  });
+
+  it('leaves real litres alone for other items', () => {
+    expect(countFromName('Leche Entera Brik 1 L', 'milk')).toBeNull();
+    expect(countFromName('Detergente Lavadora Pastillas 4 Lv', 'laundry_detergent')).toBeNull(); // too few to be sure
   });
 
   it('rejects absurd prices', () => {

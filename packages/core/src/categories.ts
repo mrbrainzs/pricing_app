@@ -22,6 +22,29 @@ export interface Category {
   maxPackRatio?: number;
 }
 
+/**
+ * Highest believable price per kg / litre / unit for each item, generous on purpose.
+ * A product above it is almost always a wrong match ("Agua Brava" is a cologne) or a
+ * misread pack size, so it is taken out of that item instead of distorting comparisons.
+ */
+export const MAX_UNIT_PRICE: Record<string, number> = {
+  milk: 4, eggs: 1.2, yogurt_plain: 12, butter: 40, cheese_sliced: 45, bread_sliced: 12,
+  rice: 12, pasta: 12, olive_oil_ev: 25, olive_oil: 18, sunflower_oil: 8, coffee_ground: 50,
+  sugar: 8, flour: 8, salt: 10, tomato_crushed: 8, tomato_fried: 10, tuna_canned: 60,
+  chickpeas: 10, lentils: 12, tomatoes: 12, bananas: 6, apples: 8, oranges: 6, potatoes: 6,
+  onions: 8, carrots: 6, lettuce: 4, chicken_breast: 25, minced_meat: 25, ham_cooked: 45,
+  water: 3, beer: 12, orange_juice: 8, toilet_paper: 1.5, kitchen_roll: 4, laundry_detergent: 1.2,
+  dish_soap: 15, shampoo: 60, toothpaste: 150,
+};
+
+/** False when a unit price (per the item's own unit) is too high to be that item. */
+export function plausibleUnitPrice(categoryId: string, unitPrice: number | null, unit: string | undefined): boolean {
+  const category = CATEGORY_BY_ID[categoryId];
+  const max = MAX_UNIT_PRICE[categoryId];
+  if (!category || max === undefined || unitPrice === null || unit !== category.defaultSize.unit) return true;
+  return unitPrice <= max;
+}
+
 const kg = (amount: number): Size => ({ amount, unit: 'kg' });
 const l = (amount: number): Size => ({ amount, unit: 'l' });
 const ud = (amount: number): Size => ({ amount, unit: 'unit' });

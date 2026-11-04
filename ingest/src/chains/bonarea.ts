@@ -90,7 +90,9 @@ export function bonareaSize(card: Pick<BonareaCard, 'weight' | 'name'>): Size | 
   const weight = card.weight?.replace(/^aprox\.?\s*/i, '').replace(/^pack\s+/i, '');
   const m = weight?.match(/^([\d.,]+)\s*([a-z]+)\.?$/i);
   if (m) {
-    const amount = Number(m[1]!.includes(',') ? m[1]!.replace(/\./g, '').replace(',', '.') : m[1]);
+    // "1,5 l" decimal comma; "1.250 ml" thousands dot.
+    const raw = m[1]!;
+    const amount = Number(raw.includes(',') ? raw.replace(/\./g, '').replace(',', '.') : /^\d{1,3}(\.\d{3})+$/.test(raw) ? raw.replace(/\./g, '') : raw);
     // "40 d." on detergents means 40 doses (washes).
     const size = toSize(amount, m[2]!.toLowerCase() === 'd' ? 'dosis' : m[2]!);
     if (size) return size;

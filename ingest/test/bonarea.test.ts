@@ -107,6 +107,7 @@ describe('bonÀrea parsing details', () => {
     ['99 cl', { amount: 0.99, unit: 'l' }],
     ['124,5 g', { amount: 0.1245, unit: 'kg' }],
     ['1,5 l', { amount: 1.5, unit: 'l' }],
+    ['1.250 ml', { amount: 1.25, unit: 'l' }], // thousands dot (live: "Detergente Perlan" read as 1.25 ml)
   ])('size "%s"', (weight, size) => {
     expect(bonareaSize({ weight, name: '' })).toEqual(size);
   });
